@@ -56,6 +56,7 @@ class AnalysisOptions(BaseModel):
     jump: int = 20  # number of finite sets drawn to compute the PH dimension, see https://arxiv.org/abs/2111.13171v1
     additional_dimensions: bool = False  # whether or not compute the ph dimensions used in the robustness experiment
     data_proportion: float = 1. # Proportion of data to use (between 0 and 1), used for pytests
+    ab: str=None
 
     def __call__(self):
 
@@ -65,46 +66,55 @@ class AnalysisOptions(BaseModel):
 
         logger.info(f"Launching {self.num_exp_lr * self.num_exp_bs} experiences")
 
-        for seed in range(10):
-            for k in range(min(self.num_exp_lr, len(lr_tab))):
-                for j in range(min(self.num_exp_bs, len(bs_tab))):
+        seed = 0
 
-                    # Initial weights should be stored in
+        for k in range(min(self.num_exp_lr, len(lr_tab))):
+            
+            if self.ab == 'a':
+                if k % 2:
+                    continue
+            else:
+                if not k % 2:
+                    continue
 
-                    # Uncomment for wandb logging
-                    reset_wandb_env()
-                    wandb.init(project=self.project_name,
-                            config=self.dict())
+            for j in range(min(self.num_exp_bs, len(bs_tab))):
 
-                    # Here the seed is not changed
-                    logger.info(f"EXPERIENCE NUMBER {k}:{j}")
+                # Initial weights should be stored in
 
-                    exp_dict = risk_analysis(
-                        self.iterations,
-                        int(bs_tab[j]),
-                        self.batch_size_eval,
-                        lr_tab[k],
-                        self.eval_freq,
-                        self.dataset,
-                        self.data_path,
-                        self.model,
-                        None, 
-                        self.depth,
-                        self.width,
-                        self.optim,
-                        self.min_points,
-                        seed,
-                        f'{self.model}_{self.depth}_{self.dataset}_{lr_tab[k]}_{bs_tab[j]}_{seed}.pth',
-                        self.compute_dimensions,
-                        self.initial_weights,
-                        ripser_points=self.ripser_points,
-                        jump=self.jump,
-                        additional_dimensions=self.additional_dimensions,
-                        data_proportion=self.data_proportion
-                    )
+                # Uncomment for wandb logging
+                reset_wandb_env()
+                wandb.init(project=self.project_name,
+                        config=self.dict())
 
-                    wandb.log(exp_dict)
-                    wandb.finish()
+                # Here the seed is not changed
+                logger.info(f"EXPERIENCE NUMBER {k}:{j}")
+
+                exp_dict = risk_analysis(
+                    self.iterations,
+                    int(bs_tab[j]),
+                    self.batch_size_eval,
+                    lr_tab[k],
+                    self.eval_freq,
+                    self.dataset,
+                    self.data_path,
+                    self.model,
+                    None, 
+                    self.depth,
+                    self.width,
+                    self.optim,
+                    self.min_points,
+                    seed,
+                    f'{self.model}_{self.depth}_{self.dataset}_{lr_tab[k]}_{bs_tab[j]}_{seed}.pth',
+                    self.compute_dimensions,
+                    self.initial_weights,
+                    ripser_points=self.ripser_points,
+                    jump=self.jump,
+                    additional_dimensions=self.additional_dimensions,
+                    data_proportion=self.data_proportion
+                )
+
+                wandb.log(exp_dict)
+                wandb.finish()
 
 if __name__ == "__main__":
     fire.Fire(AnalysisOptions)
