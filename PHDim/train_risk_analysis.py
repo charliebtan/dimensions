@@ -280,9 +280,9 @@ def main(iterations: int = 10000000,
 
                 step_sizes = [] # need to start with None as no step size for first point
 
-                for i in range(1, traj.shape[0]):
+                for q in range(1, traj.shape[0]):
 
-                    gradient_update = traj[i] - traj[i-1] # difference between points
+                    gradient_update = traj[q] - traj[q-1] # difference between points
                     step_sizes.append(torch.norm(gradient_update)) # euclidean distance between points
 
                 mean_step_size = np.mean(step_sizes)
