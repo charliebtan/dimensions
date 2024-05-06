@@ -14,6 +14,8 @@ from utils import accuracy
 from PHDim.dataset import get_data_simple
 from PHDim.eval import eval, recover_eval_tensors, eval_on_tensors
 
+from PHDim.hausdorff_alpha import estimator_vector_full, estimator_vector_projected
+
 
 class UnknownWeightFormatError(BaseException):
     ...
@@ -51,14 +53,12 @@ def main(iterations: int = 10000000,
          additional_dimensions: bool = False,
          data_proportion: float = 1.):
 
-    # Creating files to save results
-    save_folder = Path(save_folder)
-    assert save_folder.exists(), str(save_folder)
-
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     logger.info(f"on device {str(device)}")
     logger.info(f"Random seed ('torch.manual_seed'): {seed}")
     torch.manual_seed(seed)
+
+    torch.set_float32_matmul_precision('high')
 
     # training setup
     if dataset not in ["mnist", "cifar10"]:
@@ -99,15 +99,15 @@ def main(iterations: int = 10000000,
     logger.info("Network: ")
     print(net)
 
-    if weight_file is not None:
-        logger.info(f"Loading weights from {str(weight_file)}")
+    # if weight_file is not None:
+    #     logger.info(f"Loading weights from {str(weight_file)}")
 
-        if Path(weight_file).suffix == ".pth":
-            net.load_state_dict(torch.load(str(weight_file)))
-        elif Path(weight_file).suffix == ".pyT":
-            net = torch.load(str(weight_file))
-        else:
-            raise UnknownWeightFormatError(f"Extension {Path(weight_file).suffix} unknown")
+    #     if Path(weight_file).suffix == ".pth":
+    #         net.load_state_dict(torch.load(str(weight_file)))
+    #     elif Path(weight_file).suffix == ".pyT":
+    #         net = torch.load(str(weight_file))
+    #     else:
+    #         raise UnknownWeightFormatError(f"Extension {Path(weight_file).suffix} unknown")
 
     net = net.to(device)
 
@@ -216,7 +216,7 @@ def main(iterations: int = 10000000,
         # clear cache
         torch.cuda.empty_cache()
 
-        if (len(weights_history) >= ripser_points) and compute_dimensions:
+        if (len(weights_history) > ripser_points) and compute_dimensions:
             STOP = True
             weights_history.popleft()
             loss_history.popleft()
@@ -264,26 +264,41 @@ def main(iterations: int = 10000000,
                                                   point_jump=jump_size,
                                                   metric="manhattan")
 
-                if additional_dimensions:
-                    logger.info("Computing additional dimensions...")
-                    # Two of them: validation set and subset of training set
+                traj = torch.tensor(weights_history_np, requires_grad=False)
 
-                    PERCENTAGES = [2, 10, 20, 30, 40, 50, 60, 70, 80, 90]
+                alpha_full_5000 = estimator_vector_full(traj)
+                alpha_proj_med_5000, alpha_proj_max_5000 = estimator_vector_projected(traj)
 
-                    for ph_perc in PERCENTAGES:
-                        n_ph = int(loss_history_np.shape[1] * ph_perc / 100.)
-                        ph_dim_subset_based = fast_ripser(loss_history_np[..., :n_ph],
-                                                          max_points=ripser_points,
-                                                          min_points=min_points,
-                                                          point_jump=jump_size,
-                                                          metric="manhattan")
-                        subset_dim_dict.update({
-                            f"ph_dim_subset_based_{ph_perc}": ph_dim_subset_based
-                        })
+                traj_epoch = traj[-len(train_loader):]
+
+                alpha_full_epoch = estimator_vector_full(traj_epoch)
+                alpha_proj_med_epoch, alpha_proj_max_epoch = estimator_vector_projected(traj_epoch)
+
+                # the std deviation of all points from the centroid
+                std_dist = torch.sqrt(torch.sum(torch.var(torch.tensor(traj), dim=0))).item()
+                norm = np.linalg.norm(traj[-1]).item()
+
+                step_sizes = [] # need to start with None as no step size for first point
+
+                for i in range(1, traj.shape[0]):
+
+                    gradient_update = traj[i] - traj[i-1] # difference between points
+                    step_sizes.append(torch.norm(gradient_update)) # euclidean distance between points
+
+                mean_step_size = np.mean(step_sizes)
 
             else:
                 ph_dim_euclidean = "non_computed"
                 ph_dim_losses_based = "non_computed"
+                alpha_full_5000 = "non_computed"
+                alpha_proj_med_5000 = "non_computed"
+                alpha_proj_max_5000 = "non_computed"
+                alpha_full_epoch = "non_computed"
+                alpha_proj_med_epoch = "non_computed"
+                alpha_proj_max_epoch = "non_computed"
+                std_dist = "non_computed"
+                norm = "non_computed"
+                mean_step_size = "non_computed"
 
             test_acc = evaluation_history_TEST[-1][2]
             train_acc = evaluation_history_TRAIN[-1][2]
@@ -291,19 +306,30 @@ def main(iterations: int = 10000000,
             exp_dict = {
                 "ph_dim_euclidean": ph_dim_euclidean,
                 "ph_dim_losses_based": ph_dim_losses_based,
+                "alpha_full_5000" : alpha_full_5000,
+                "alpha_proj_med_5000": alpha_proj_med_5000,
+                "alpha_proj_max_5000": alpha_proj_max_5000,
+                "alpha_full_epoch": alpha_full_epoch,
+                "alpha_proj_med_epoch": alpha_proj_med_epoch,
+                "alpha_proj_max_epoch": alpha_proj_max_epoch,
+                "std_dist": std_dist,
+                "norm": norm,
+                "step_size": mean_step_size,
                 "train_acc": train_acc,
                 "eval_acc": test_acc,
                 "acc_gap": train_acc - test_acc,
-                "loss_gap": te_hist[0] - tr_hist[0],
+                "train_loss": tr_hist[0],
                 "test_loss": te_hist[0],
+                "loss_gap": te_hist[0] - tr_hist[0],
                 "learning_rate": lr,
                 "batch_size": int(batch_size_train),
                 "LB_ratio": lr / batch_size_train,
                 "depth": depth,
                 "width": width,
                 "model": model,
-                "last_losses": f"outputs_loss_{lr}_{batch_size_train}.npy",
-                "iterations": i
+                "iterations": i,
+                "seed": seed,
+                "dataset": dataset,
             }
             exp_dict.update(subset_dim_dict)
 
@@ -311,7 +337,7 @@ def main(iterations: int = 10000000,
 
         # Saving weights if specified
         if save_weights_file is not None:
-            logger.info(f"Saving last weights in {str(save_weights_file)}")
+            # logger.info(f"Saving last weights in {str(save_weights_file)}")
             torch.save(net.state_dict(), str(save_weights_file))
             exp_dict["saved_weights"] = str(save_weights_file)
 

@@ -69,7 +69,7 @@ def eval(eval_loader, net, criterion, opt, eval: bool = False):
         bs = x.size(0)
 
         total_size += int(bs)
-        total_loss += float(losses_unreduced.sum().cpu().item()) * bs
+        total_loss += float(losses_unreduced.sum().cpu().item())
         total_acc += float(prec) * bs
 
         losses.append(losses_unreduced)
