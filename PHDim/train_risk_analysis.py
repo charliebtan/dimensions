@@ -7,7 +7,7 @@ import torch.nn as nn
 import wandb
 from loguru import logger
 
-from models import alexnet, fc_mnist, vgg, fc_cifar, lenet
+from models import alexnet, fc_mnist, vgg, fc_cifar, lenet, mlp_mnist, cnn_cifar
 from models.vgg import vgg as make_vgg
 from topology import fast_ripser
 from utils import accuracy
@@ -80,9 +80,9 @@ def main(iterations: int = 10000000,
     if model == 'fc':
         if dataset == 'mnist':
             input_size = 28**2
-            net = fc_mnist(input_dim=input_size, width=width, depth=depth, num_classes=num_classes).to(device)
+            net = mlp_mnist().to(device)
         elif dataset == 'cifar10':
-            net = fc_cifar().to(device)
+            net = cnn_cifar().to(device)
     elif model == 'alexnet':
         if dataset == 'mnist':
             net = alexnet(input_height=28, input_width=28, input_channels=1, num_classes=num_classes).to(device)

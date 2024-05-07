@@ -14,7 +14,7 @@ from sklearn.datasets import fetch_california_housing
 from sklearn.datasets import load_boston
 from sklearn.model_selection import train_test_split
 
-from models import fc_bhp
+from models import fc_bhp, mlp_chd
 from topology import fast_ripser
 
 from PHDim.hausdorff_alpha import estimator_vector_full, estimator_vector_projected
@@ -145,7 +145,7 @@ def train_one_model(eval_freq: int = 1000,
     input_dim = training_set.shape[1]
 
     if model == "fcnn":
-        net = fc_bhp(width=width, depth=depth, input_dim=input_dim).to(device)
+        net = mlp_chd().to(device)  
     elif model == "attention":
         net = AttentionFCNN(depth=depth, width=width, input_dim=input_dim).to(device)
     else:
