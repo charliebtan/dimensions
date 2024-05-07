@@ -1,5 +1,5 @@
 import torch.nn as nn
-from fcn import FCN
+from .mlp_charlie import MLP
 
 
 class CNN(nn.Module):

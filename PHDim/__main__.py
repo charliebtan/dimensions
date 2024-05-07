@@ -98,7 +98,6 @@ class AnalysisOptions(BaseModel):
                     self.dataset,
                     self.data_path,
                     self.model,
-                    None, 
                     self.depth,
                     self.width,
                     self.optim,
@@ -106,11 +105,8 @@ class AnalysisOptions(BaseModel):
                     seed,
                     f'{self.model}_{self.depth}_{self.dataset}_{lr_tab[k]}_{bs_tab[j]}_{seed}.pth',
                     self.compute_dimensions,
-                    self.initial_weights,
                     ripser_points=self.ripser_points,
                     jump=self.jump,
-                    additional_dimensions=self.additional_dimensions,
-                    data_proportion=self.data_proportion
                 )
 
                 wandb.log(exp_dict)

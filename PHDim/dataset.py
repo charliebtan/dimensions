@@ -128,18 +128,23 @@ def get_data(args: DataOptions, subset_percentage: float = None):
         dataset=tr_data,
         batch_size=args.batch_size_train,
         shuffle=True,
+        pin_memory=True,
+        num_workers=2,
     )
 
     train_loader_eval = torch.utils.data.DataLoader(
         dataset=tr_data,
         batch_size=args.batch_size_eval,
         shuffle=False,
+        pin_memory=True,
+        num_workers=2,
     )
 
     test_loader_eval = torch.utils.data.DataLoader(
         dataset=te_data,
         batch_size=args.batch_size_eval,
         shuffle=False,
+        pin_memory=True,
     )
 
     return train_loader, test_loader_eval, train_loader_eval, num_classes
