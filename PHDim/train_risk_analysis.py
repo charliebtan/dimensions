@@ -155,23 +155,25 @@ def main(iterations: int = 10000000,
         # first record is at the initial point
         if i % eval_freq == 0 and (not CONVERGED):
 
-            # Evaluation on validation set
-            logger.info(f"Evaluation at iteration {i}")
-            te_hist, *_ = eval(test_loader_eval, net, crit_unreduced, opt)
-            evaluation_history_TEST.append([i, *te_hist])
-            logger.info(f"Evaluation on test set at iteration {i} finished ✅, accuracy: {round(te_hist[1], 3)}")
+            with torch.no_grad():
 
-            # Evaluation on training set
-            tr_hist, losses, _ = eval(train_loader_eval, net, crit_unreduced, opt)
-            logger.info(f"Training accuracy at iteration {i}: {round(tr_hist[1], 3)}%")
+                # Evaluation on validation set
+                logger.info(f"Evaluation at iteration {i}")
+                te_hist, *_ = eval(test_loader_eval, net, crit_unreduced, opt)
+                evaluation_history_TEST.append([i, *te_hist])
+                logger.info(f"Evaluation on test set at iteration {i} finished ✅, accuracy: {round(te_hist[1], 3)}")
 
-            # Stopping criterion based on 100% accuracy
-            if (int(tr_hist[1]) == 100) and (CONVERGED is False):
-                logger.info(f'All training data is correctly classified in {i} iterations! ✅')
-                CONVERGED = True
+                # Evaluation on training set
+                tr_hist, losses, _ = eval(train_loader_eval, net, crit_unreduced, opt)
+                logger.info(f"Training accuracy at iteration {i}: {round(tr_hist[1], 3)}%")
 
-            loss_train = losses.sum().item()
-            logger.info(f"Loss sum at iteration{i}: {loss_train}")
+                # Stopping criterion based on 100% accuracy
+                if (int(tr_hist[1]) == 100) and (CONVERGED is False):
+                    logger.info(f'All training data is correctly classified in {i} iterations! ✅')
+                    CONVERGED = True
+
+                loss_train = losses.sum().item()
+                logger.info(f"Loss sum at iteration{i}: {loss_train}")
 
         net.train()
 
@@ -229,76 +231,78 @@ def main(iterations: int = 10000000,
                 logger.warning("Experiment did not converge")
                 break
 
-            # Some logging
-            logger.debug('eval time {}'.format(i))
-            te_hist, *_ = eval(test_loader_eval, net, crit_unreduced, opt)
-            tr_hist, *_ = eval(train_loader_eval, net, crit_unreduced, opt)
+            with torch.no_grad():
 
-            evaluation_history_TEST.append([i + 1, *te_hist])
-            evaluation_history_TRAIN.append([i + 1, *tr_hist])
+                # Some logging
+                logger.debug('eval time {}'.format(i))
+                te_hist, *_ = eval(test_loader_eval, net, crit_unreduced, opt)
+                tr_hist, *_ = eval(train_loader_eval, net, crit_unreduced, opt)
 
-            # Turn collected iterates (both weights and losses) into numpy arrays
-            if compute_dimensions:
-                weights_history_np = np.stack(tuple(weights_history))
-                del weights_history
+                evaluation_history_TEST.append([i + 1, *te_hist])
+                evaluation_history_TRAIN.append([i + 1, *tr_hist])
 
-            loss_history_np = torch.stack(tuple(loss_history)).cpu().numpy()
+                # Turn collected iterates (both weights and losses) into numpy arrays
+                if compute_dimensions:
+                    weights_history_np = np.stack(tuple(weights_history))
+                    del weights_history
 
-            # jump_size is a parameter of the persistent homology part
-            # Ijump defines how many finite set are drawn to perform the affine regression
-            jump_size = int((ripser_points - min_points) / jump)
+                loss_history_np = torch.stack(tuple(loss_history)).cpu().numpy()
 
-            subset_dim_dict = {}
-            if compute_dimensions:
+                # jump_size is a parameter of the persistent homology part
+                # Ijump defines how many finite set are drawn to perform the affine regression
+                jump_size = int((ripser_points - min_points) / jump)
 
-                logger.info("Computing euclidean PH dim...")
-                ph_dim_euclidean = fast_ripser(weights_history_np,
-                                               max_points=ripser_points,
-                                               min_points=min_points,
-                                               point_jump=jump_size)
+                subset_dim_dict = {}
+                if compute_dimensions:
 
-                logger.info("Computing L1 losses based PH dim...")
-                ph_dim_losses_based = fast_ripser(loss_history_np,
-                                                  max_points=ripser_points,
-                                                  min_points=min_points,
-                                                  point_jump=jump_size,
-                                                  metric="manhattan")
+                    logger.info("Computing euclidean PH dim...")
+                    ph_dim_euclidean = fast_ripser(weights_history_np,
+                                                   max_points=ripser_points,
+                                                   min_points=min_points,
+                                                   point_jump=jump_size)
 
-                traj = torch.tensor(weights_history_np, requires_grad=False)
+                    logger.info("Computing L1 losses based PH dim...")
+                    ph_dim_losses_based = fast_ripser(loss_history_np,
+                                                      max_points=ripser_points,
+                                                      min_points=min_points,
+                                                      point_jump=jump_size,
+                                                      metric="manhattan")
 
-                alpha_full_5000 = estimator_vector_full(traj)
-                alpha_proj_med_5000, alpha_proj_max_5000 = estimator_vector_projected(traj)
+                    traj = torch.tensor(weights_history_np, requires_grad=False)
 
-                traj_epoch = traj[-len(train_loader):]
+                    alpha_full_5000 = estimator_vector_full(traj)
+                    alpha_proj_med_5000, alpha_proj_max_5000 = estimator_vector_projected(traj)
 
-                alpha_full_epoch = estimator_vector_full(traj_epoch)
-                alpha_proj_med_epoch, alpha_proj_max_epoch = estimator_vector_projected(traj_epoch)
+                    traj_epoch = traj[-len(train_loader):]
 
-                # the std deviation of all points from the centroid
-                std_dist = torch.sqrt(torch.sum(torch.var(torch.tensor(traj), dim=0))).item()
-                norm = np.linalg.norm(traj[-1]).item()
+                    alpha_full_epoch = estimator_vector_full(traj_epoch)
+                    alpha_proj_med_epoch, alpha_proj_max_epoch = estimator_vector_projected(traj_epoch)
 
-                step_sizes = [] # need to start with None as no step size for first point
+                    # the std deviation of all points from the centroid
+                    std_dist = torch.sqrt(torch.sum(torch.var(torch.tensor(traj), dim=0))).item()
+                    norm = np.linalg.norm(traj[-1]).item()
 
-                for q in range(1, traj.shape[0]):
+                    step_sizes = [] # need to start with None as no step size for first point
 
-                    gradient_update = traj[q] - traj[q-1] # difference between points
-                    step_sizes.append(torch.norm(gradient_update)) # euclidean distance between points
+                    for q in range(1, traj.shape[0]):
 
-                mean_step_size = np.mean(step_sizes)
+                        gradient_update = traj[q] - traj[q-1] # difference between points
+                        step_sizes.append(torch.norm(gradient_update)) # euclidean distance between points
 
-            else:
-                ph_dim_euclidean = "non_computed"
-                ph_dim_losses_based = "non_computed"
-                alpha_full_5000 = "non_computed"
-                alpha_proj_med_5000 = "non_computed"
-                alpha_proj_max_5000 = "non_computed"
-                alpha_full_epoch = "non_computed"
-                alpha_proj_med_epoch = "non_computed"
-                alpha_proj_max_epoch = "non_computed"
-                std_dist = "non_computed"
-                norm = "non_computed"
-                mean_step_size = "non_computed"
+                    mean_step_size = np.mean(step_sizes)
+
+                else:
+                    ph_dim_euclidean = "non_computed"
+                    ph_dim_losses_based = "non_computed"
+                    alpha_full_5000 = "non_computed"
+                    alpha_proj_med_5000 = "non_computed"
+                    alpha_proj_max_5000 = "non_computed"
+                    alpha_full_epoch = "non_computed"
+                    alpha_proj_med_epoch = "non_computed"
+                    alpha_proj_max_epoch = "non_computed"
+                    std_dist = "non_computed"
+                    norm = "non_computed"
+                    mean_step_size = "non_computed"
 
             test_acc = evaluation_history_TEST[-1][2]
             train_acc = evaluation_history_TRAIN[-1][2]

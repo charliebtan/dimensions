@@ -176,24 +176,26 @@ def train_one_model(eval_freq: int = 1000,
     logger.info("Starting training")
     for i, (x, y) in enumerate(cycle_dataloader):
 
-        if i % eval_freq == 0:
-            loss_eval, _ = eval_bhp(test_set, test_targets, net, obj)
-            eval_hist.append(loss_eval)
-            logger.info(f"Evaluation at iteration {i} finished ✅, score (deviation): {np.sqrt(loss_eval)}")
+        with torch.no_grad():
 
-            loss_train, features = eval_bhp(training_set, training_targets, net, obj)
-            logger.info(f"Evaluation on training set at iteration {i} finished ✅, score (deviation): {np.sqrt(loss_train)}")
+            if i % eval_freq == 0:
+                loss_eval, _ = eval_bhp(test_set, test_targets, net, obj)
+                eval_hist.append(loss_eval)
+                logger.info(f"Evaluation at iteration {i} finished ✅, score (deviation): {np.sqrt(loss_eval)}")
 
-            avg_train_loss += loss_train
-            # wandb.log({"training set loss": loss_train})
+                loss_train, features = eval_bhp(training_set, training_targets, net, obj)
+                logger.info(f"Evaluation on training set at iteration {i} finished ✅, score (deviation): {np.sqrt(loss_train)}")
 
-            # Stopping criterion on instant train loss
-            if (i > 0) and (np.abs(loss_train - previous_train_loss) / previous_train_loss < stopping_criterion):
-                if not CONVERGED:
-                    logger.info(f"Experiment converged in {i} iterations !!")
-                    CONVERGED = True
+                avg_train_loss += loss_train
+                # wandb.log({"training set loss": loss_train})
 
-            previous_train_loss = loss_train
+                # Stopping criterion on instant train loss
+                if (i > 0) and (np.abs(loss_train - previous_train_loss) / previous_train_loss < stopping_criterion):
+                    if not CONVERGED:
+                        logger.info(f"Experiment converged in {i} iterations !!")
+                        CONVERGED = True
+
+                previous_train_loss = loss_train
 
         net.train()
 
@@ -220,19 +222,21 @@ def train_one_model(eval_freq: int = 1000,
         if i > iterations:
             CONVERGED = True
 
-        if CONVERGED or ((ph_period is not None) and (not CONVERGED) and (i % ph_period == 0)):
-            weights_history.append(get_weights(net))
-            loss_train, features = eval_bhp(training_set, training_targets, net, obj)
-            outputs_history.append(features)
-            loss_eval, features = eval_bhp(test_set, test_targets, net, obj)
-            eval_history.append(features)
+        with torch.no_grad():
 
-        if len(weights_history) >= ripser_points:
-            STOP = True
-            if ph_period is not None:
-                weights_history.popleft()
-                outputs_history.popleft()
-                eval_history.popleft()
+            if CONVERGED or ((ph_period is not None) and (not CONVERGED) and (i % ph_period == 0)):
+                weights_history.append(get_weights(net))
+                loss_train, features = eval_bhp(training_set, training_targets, net, obj)
+                outputs_history.append(features)
+                loss_eval, features = eval_bhp(test_set, test_targets, net, obj)
+                eval_history.append(features)
+
+            if len(weights_history) >= ripser_points:
+                STOP = True
+                if ph_period is not None:
+                    weights_history.popleft()
+                    outputs_history.popleft()
+                    eval_history.popleft()
 
                 # clear cache
         torch.cuda.empty_cache()
@@ -244,98 +248,100 @@ def train_one_model(eval_freq: int = 1000,
 
         if STOP and CONVERGED:
 
-            if len(weights_history) < ripser_points:
-                logger.warning("Experiment did not converge")
-                break
+            with torch.no_grad():
 
-            loss_eval, _ = eval_bhp(test_set, test_targets, net, obj)
-            eval_hist.append(loss_eval)
+                if len(weights_history) < ripser_points:
+                    logger.warning("Experiment did not converge")
+                    break
 
-            loss_train, _ = eval_bhp(training_set, training_targets, net, obj)
-            risk_hist.append([i, loss_train])
+                loss_eval, _ = eval_bhp(test_set, test_targets, net, obj)
+                eval_hist.append(loss_eval)
 
-            logger.info(f"Final sqrt(losses): train: {round(np.sqrt(loss_train), 2)}, eval: {round(np.sqrt(loss_eval), 2)}")
+                loss_train, _ = eval_bhp(training_set, training_targets, net, obj)
+                risk_hist.append([i, loss_train])
 
-            weights_history_np = torch.stack(tuple(weights_history)).cpu().numpy()
-            outputs_history_np = torch.stack(tuple(outputs_history)).cpu().numpy()
-            eval_history_np = torch.stack(tuple(eval_history)).cpu().numpy()
+                logger.info(f"Final sqrt(losses): train: {round(np.sqrt(loss_train), 2)}, eval: {round(np.sqrt(loss_eval), 2)}")
 
-            del weights_history
+                weights_history_np = torch.stack(tuple(weights_history)).cpu().numpy()
+                outputs_history_np = torch.stack(tuple(outputs_history)).cpu().numpy()
+                eval_history_np = torch.stack(tuple(eval_history)).cpu().numpy()
 
-            jump_size = int((ripser_points - min_points) / jump)
+                del weights_history
 
-            logger.info("Computing euclidean PH dim...")
-            ph_dim_euclidean = fast_ripser(weights_history_np,
-                                           max_points=ripser_points,
-                                           min_points=min_points,
-                                           point_jump=jump_size)
+                jump_size = int((ripser_points - min_points) / jump)
 
-            logger.info("Computing PH dim in output space...")
-            ph_dim_losses_based = fast_ripser(outputs_history_np,
-                                              max_points=ripser_points,
-                                              min_points=min_points,
-                                              point_jump=jump_size,
-                                              metric="manhattan")
+                logger.info("Computing euclidean PH dim...")
+                ph_dim_euclidean = fast_ripser(weights_history_np,
+                                               max_points=ripser_points,
+                                               min_points=min_points,
+                                               point_jump=jump_size)
 
-            logger.debug(f"outputs shape: {outputs_history_np.shape}")
+                logger.info("Computing PH dim in output space...")
+                ph_dim_losses_based = fast_ripser(outputs_history_np,
+                                                  max_points=ripser_points,
+                                                  min_points=min_points,
+                                                  point_jump=jump_size,
+                                                  metric="manhattan")
 
-            logger.info("Computing PH dim in eval space...")
-            ph_dim_eval_based = fast_ripser(eval_history_np,
-                                            max_points=ripser_points,
-                                            min_points=min_points,
-                                            point_jump=jump_size)
+                logger.debug(f"outputs shape: {outputs_history_np.shape}")
 
-            traj = torch.tensor(weights_history_np, requires_grad=False)
+                logger.info("Computing PH dim in eval space...")
+                ph_dim_eval_based = fast_ripser(eval_history_np,
+                                                max_points=ripser_points,
+                                                min_points=min_points,
+                                                point_jump=jump_size)
 
-            print(traj.shape)
+                traj = torch.tensor(weights_history_np, requires_grad=False)
 
-            alpha_full_5000 = estimator_vector_full(traj)
-            alpha_proj_med_5000, alpha_proj_max_5000 = estimator_vector_projected(traj)
+                print(traj.shape)
 
-            traj_epoch = traj[-len(dataloader):]
+                alpha_full_5000 = estimator_vector_full(traj)
+                alpha_proj_med_5000, alpha_proj_max_5000 = estimator_vector_projected(traj)
 
-            alpha_full_epoch = estimator_vector_full(traj_epoch)
-            alpha_proj_med_epoch, alpha_proj_max_epoch = estimator_vector_projected(traj_epoch)
+                traj_epoch = traj[-len(dataloader):]
 
-            # the std deviation of all points from the centroid
-            std_dist = torch.sqrt(torch.sum(torch.var(torch.tensor(traj), dim=0))).item()
-            norm = np.linalg.norm(traj[-1]).item()
+                alpha_full_epoch = estimator_vector_full(traj_epoch)
+                alpha_proj_med_epoch, alpha_proj_max_epoch = estimator_vector_projected(traj_epoch)
 
-            step_sizes = [] # need to start with None as no step size for first point
+                # the std deviation of all points from the centroid
+                std_dist = torch.sqrt(torch.sum(torch.var(torch.tensor(traj), dim=0))).item()
+                norm = np.linalg.norm(traj[-1]).item()
 
-            for q in range(1, traj.shape[0]):
+                step_sizes = [] # need to start with None as no step size for first point
 
-                gradient_update = traj[q] - traj[q-1] # difference between points
-                step_sizes.append(torch.norm(gradient_update)) # euclidean distance between points
+                for q in range(1, traj.shape[0]):
 
-            mean_step_size = np.mean(step_sizes)
+                    gradient_update = traj[q] - traj[q-1] # difference between points
+                    step_sizes.append(torch.norm(gradient_update)) # euclidean distance between points
 
-            exp_dict = {
-                "ph_dim_euclidean": ph_dim_euclidean,
-                "ph_dim_losses_based": ph_dim_losses_based,
-                "ph_dim_eval_based": ph_dim_eval_based,
-                "alpha_full_5000" : alpha_full_5000,
-                "alpha_proj_med_5000": alpha_proj_med_5000,
-                "alpha_proj_max_5000": alpha_proj_max_5000,
-                "alpha_full_epoch": alpha_full_epoch,
-                "alpha_proj_med_epoch": alpha_proj_med_epoch,
-                "alpha_proj_max_epoch": alpha_proj_max_epoch,
-                "std_dist": std_dist,
-                "norm": norm,
-                "step_size": mean_step_size,
-                "train_loss": loss_train,
-                "test_loss": loss_eval,
-                "loss_gap": loss_train - loss_eval,
-                "learning_rate": lr,
-                "batch_size": int(batch_size),
-                "LB_ratio": lr / batch_size,
-                "depth": depth,
-                "width": width,
-                "model": model,
-                "iterations": i,
-                "seed": seed,
-                "dataset": dataset_name,
-            }
+                mean_step_size = np.mean(step_sizes)
+
+                exp_dict = {
+                    "ph_dim_euclidean": ph_dim_euclidean,
+                    "ph_dim_losses_based": ph_dim_losses_based,
+                    "ph_dim_eval_based": ph_dim_eval_based,
+                    "alpha_full_5000" : alpha_full_5000,
+                    "alpha_proj_med_5000": alpha_proj_med_5000,
+                    "alpha_proj_max_5000": alpha_proj_max_5000,
+                    "alpha_full_epoch": alpha_full_epoch,
+                    "alpha_proj_med_epoch": alpha_proj_med_epoch,
+                    "alpha_proj_max_epoch": alpha_proj_max_epoch,
+                    "std_dist": std_dist,
+                    "norm": norm,
+                    "step_size": mean_step_size,
+                    "train_loss": loss_train,
+                    "test_loss": loss_eval,
+                    "loss_gap": loss_train - loss_eval,
+                    "learning_rate": lr,
+                    "batch_size": int(batch_size),
+                    "LB_ratio": lr / batch_size,
+                    "depth": depth,
+                    "width": width,
+                    "model": model,
+                    "iterations": i,
+                    "seed": seed,
+                    "dataset": dataset_name,
+                }
 
             break
 
