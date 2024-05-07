@@ -145,7 +145,7 @@ def train_one_model(eval_freq: int = 1000,
     input_dim = training_set.shape[1]
 
     if model == "fcnn":
-        net = mlp_chd().to(device)  
+        net = fc_bhp(width=width, depth=depth, input_dim=input_dim).to(device)
     elif model == "attention":
         net = AttentionFCNN(depth=depth, width=width, input_dim=input_dim).to(device)
     else:
