@@ -382,7 +382,7 @@ class BHPAnalysis(BaseModel):
                 for b in range(len(bs_tab)):
 
                     reset_wandb_env()
-                    wandb.init(project=self.project_name,
+                    wandb.init(project=self.project_name, entity='ctan',
                                config=self.dict()
                     )
 

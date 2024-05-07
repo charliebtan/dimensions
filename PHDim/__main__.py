@@ -75,7 +75,7 @@ class AnalysisOptions(BaseModel):
 
                     # Uncomment for wandb logging
                     reset_wandb_env()
-                    wandb.init(project=self.project_name,
+                    wandb.init(project=self.project_name, entity='ctan',
                             config=self.dict())
 
                     # Here the seed is not changed
