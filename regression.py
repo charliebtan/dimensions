@@ -14,7 +14,7 @@ from sklearn.datasets import fetch_california_housing
 from sklearn.datasets import load_boston
 from sklearn.model_selection import train_test_split
 
-from models import fc_bhp, mlp_chd
+from models import fc_bhp
 from topology import fast_ripser
 
 from PHDim.hausdorff_alpha import estimator_vector_full, estimator_vector_projected

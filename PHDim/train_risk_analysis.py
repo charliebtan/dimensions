@@ -7,7 +7,7 @@ import torch.nn as nn
 import wandb
 from loguru import logger
 
-from models import alexnet, fc_mnist, vgg, fc_cifar, lenet, cnn_cifar
+from models import alexnet, fc_mnist, vgg, fc_cifar, lenet
 from models.vgg import vgg as make_vgg
 from topology import fast_ripser
 from utils import accuracy
