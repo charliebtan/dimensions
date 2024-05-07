@@ -1,8 +1,20 @@
-import numpy as np
 import torch
-from loguru import logger
-from torch.utils.data import Subset
 from torchvision import datasets, transforms
+
+from PHDim.eval import recover_eval_tensors
+
+
+class QuickDataset(torch.utils.data.Dataset):
+    def __init__(self, x, y, device='cuda' if torch.cuda.is_available() else 'cpu'):
+        super().__init__()
+        self.x = x.to(device)
+        self.y = y.to(device)
+    
+    def __len__(self):
+        return len(self.y)
+
+    def __getitem__(self, i):
+        return self.x[i], self.y[i]
 
 
 class DataOptions:
@@ -61,14 +73,6 @@ def get_data(args: DataOptions, subset_percentage: float = None):
         transforms.Normalize(**stats)
     ]
 
-    if args.dataset == "mnist" and args.resize is not None:
-        trans = [
-            transforms.ToTensor(),
-            lambda t: t.type(torch.get_default_dtype()),
-            transforms.Normalize(**stats),
-            transforms.Resize(args.resize)
-        ]
-
     # get train and test data with the same normalization
     tr_data = getattr(datasets, data_class)(
         root=args.path,
@@ -84,60 +88,39 @@ def get_data(args: DataOptions, subset_percentage: float = None):
         transform=transforms.Compose(trans)
     )
 
-    n_tr = len(tr_data)
-    n_te = len(te_data)
+    # get tr_loader for train/eval and te_loader for eval
+    temp_train_loader = torch.utils.data.DataLoader(
+        dataset=tr_data,
+        batch_size=args.batch_size_train,
+    )
 
-    if subset_percentage is not None and subset_percentage < 1.:
+    temp_test_loader = torch.utils.data.DataLoader(
+        dataset=te_data,
+        batch_size=args.batch_size_eval,
+    )
 
-        # We try to extract subsets equivalently in each class to keep them balanced
-        # Subset selection is performed only on the training set!!
+    train_x, train_y = recover_eval_tensors(temp_train_loader)
+    test_x, test_y = recover_eval_tensors(temp_test_loader)
 
-        assert subset_percentage > 0. and subset_percentage <= 1.
-        logger.warning(f"Using only {round(100. * subset_percentage, 2)}% of the {data_class} training set")
-
-        selected_indices = torch.zeros(len(tr_data), dtype=torch.bool)
-        for cl in tr_data.class_to_idx.keys():
-            cl_idx = tr_data.class_to_idx[cl]
-            where_class = torch.where(torch.tensor(tr_data.targets) == cl_idx)[0]
-            sub_indices = (torch.rand(len(where_class)) < subset_percentage)
-            selected_indices[where_class[sub_indices]] = True
-
-        tr_data = Subset(tr_data, selected_indices.nonzero().reshape(-1))
-
-    subset_eval = (subset_percentage * n_tr) / n_te
-
-    if subset_eval < 1.:
-
-        # We try to extract subsets equivalently in each class to keep them balanced
-        # Subset selection is performed only on the training set!!
-
-        assert subset_eval > 0. and subset_eval <= 1.
-        logger.warning(f"Using only {round(100. * subset_eval, 2)}% of the {data_class} validation set")
-
-        selected_indices = torch.zeros(len(te_data), dtype=torch.bool)
-        for cl in te_data.class_to_idx.keys():
-            cl_idx = te_data.class_to_idx[cl]
-            where_class = torch.where(torch.tensor(te_data.targets) == cl_idx)[0]
-            sub_indices = (torch.rand(len(where_class)) < subset_eval)
-            selected_indices[where_class[sub_indices]] = True
-
-        te_data = Subset(te_data, selected_indices.nonzero().reshape(-1))
+    train_dataset = QuickDataset(train_x, train_y)
+    test_dataset = QuickDataset(test_x, test_y)
 
     # get tr_loader for train/eval and te_loader for eval
     train_loader = torch.utils.data.DataLoader(
-        dataset=tr_data,
+        dataset=train_dataset,
         batch_size=args.batch_size_train,
         shuffle=True,
     )
 
+    # get tr_loader for train/eval and te_loader for eval
     train_loader_eval = torch.utils.data.DataLoader(
-        dataset=tr_data,
+        dataset=train_dataset,
         batch_size=args.batch_size_eval,
         shuffle=False,
     )
 
     test_loader_eval = torch.utils.data.DataLoader(
-        dataset=te_data,
+        dataset=test_dataset,
         batch_size=args.batch_size_eval,
         shuffle=False,
     )

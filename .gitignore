@@ -1,3 +1,6 @@
+model_files/*
+*.txt
+
 .vscode/
 build/
 dist/

@@ -39,7 +39,6 @@ def main(iterations: int = 10000000,
          dataset: str = "mnist",
          data_path: str = "~/data/",
          model: str = "fc",
-         save_folder: str = "results",
          depth: int = 5,
          width: int = 50,
          optim: str = "SGD",
@@ -47,32 +46,25 @@ def main(iterations: int = 10000000,
          seed: int = 42,
          save_weights_file: str = None,
          compute_dimensions: bool = True,
-         weight_file: str = None,
          ripser_points: int = 1000,
          jump: int = 20,
-         additional_dimensions: bool = False,
-         data_proportion: float = 1.):
+         ):
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
     logger.info(f"on device {str(device)}")
     logger.info(f"Random seed ('torch.manual_seed'): {seed}")
     torch.manual_seed(seed)
-
     torch.set_float32_matmul_precision('high')
 
     # training setup
     if dataset not in ["mnist", "cifar10"]:
         raise NotImplementedError(f"Dataset {dataset} not implemented, should be in ['mnist', 'cifar10']")
-    train_loader, test_loader_eval,\
-        train_loader_eval, num_classes = get_data_simple(dataset,
+    train_loader, test_loader_eval, train_loader_eval, num_classes = get_data_simple(dataset,
                                                          data_path,
                                                          batch_size_train,
                                                          batch_size_eval,
-                                                         subset=data_proportion)
-
-    # Some params for CIFAR:
-    BATCH_NORM = False
-    SCALE = 64
+                                                         subset=1.0)
 
     # TODO: use the args here
     if model not in ["fc", "alexnet", "vgg", "lenet"]:
@@ -82,14 +74,14 @@ def main(iterations: int = 10000000,
             input_size = 28**2
             net = fc_mnist(input_dim=input_size, width=width, depth=depth, num_classes=num_classes).to(device)
         elif dataset == 'cifar10':
-            net = fc_cifar().to(device)
+            net = cnn_cifar().to(device)
     elif model == 'alexnet':
         if dataset == 'mnist':
             net = alexnet(input_height=28, input_width=28, input_channels=1, num_classes=num_classes).to(device)
         else:
-            net = alexnet(ch=SCALE, num_classes=num_classes).to(device)
+            net = alexnet(ch=64, num_classes=num_classes).to(device)
     elif model == 'vgg':
-        net = make_vgg(depth=depth, num_classes=num_classes, batch_norm=BATCH_NORM).to(device)
+        net = make_vgg(depth=depth, num_classes=num_classes, batch_norm=False).to(device)
     elif model == "lenet":
         if dataset == "mnist":
             net = lenet(input_channels=1, height=28, width=28).to(device)
@@ -98,16 +90,6 @@ def main(iterations: int = 10000000,
 
     logger.info("Network: ")
     print(net)
-
-    # if weight_file is not None:
-    #     logger.info(f"Loading weights from {str(weight_file)}")
-
-    #     if Path(weight_file).suffix == ".pth":
-    #         net.load_state_dict(torch.load(str(weight_file)))
-    #     elif Path(weight_file).suffix == ".pyT":
-    #         net = torch.load(str(weight_file))
-    #     else:
-    #         raise UnknownWeightFormatError(f"Extension {Path(weight_file).suffix} unknown")
 
     net = net.to(device)
 
@@ -124,13 +106,6 @@ def main(iterations: int = 10000000,
     # Recovering evaluation tensors (made to speed up the experiment)
     eval_x, eval_y = recover_eval_tensors(train_loader_eval)
     test_x, test_y = recover_eval_tensors(test_loader_eval)
-
-    # training logs per iteration
-    training_history = []
-
-    # eval logs less frequently
-    evaluation_history_TEST = []
-    evaluation_history_TRAIN = []
 
     # initialize results of the experiment, returned if didn't work
     exp_dict = {}
@@ -160,7 +135,6 @@ def main(iterations: int = 10000000,
                 # Evaluation on validation set
                 logger.info(f"Evaluation at iteration {i}")
                 te_hist, *_ = eval(test_loader_eval, net, crit_unreduced, opt)
-                evaluation_history_TEST.append([i, *te_hist])
                 logger.info(f"Evaluation on test set at iteration {i} finished ✅, accuracy: {round(te_hist[1], 3)}")
 
                 # Evaluation on training set
@@ -172,12 +146,11 @@ def main(iterations: int = 10000000,
                     logger.info(f'All training data is correctly classified in {i} iterations! ✅')
                     CONVERGED = True
 
-                loss_train = losses.sum().item()
-                logger.info(f"Loss sum at iteration{i}: {loss_train}")
+                logger.info(f"Loss sum at iteration{i}: {losses.sum().item()}")
 
         net.train()
 
-        x, y = x.to(device), y.to(device)
+        x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
 
         opt.zero_grad()
         out = net(x)
@@ -193,9 +166,6 @@ def main(iterations: int = 10000000,
         # calculate the gradients
         loss.backward()
 
-        # record training history (starts at initial point)
-        training_history.append([i, loss.item(), accuracy(out, y).item()])
-
         # take the step
         opt.step()
 
@@ -209,7 +179,6 @@ def main(iterations: int = 10000000,
 
             if compute_dimensions:
                 tr_hist, losses, _ = eval_on_tensors(eval_x, eval_y, net, crit_unreduced)
-                evaluation_history_TRAIN.append([i, *tr_hist])
                 loss_history.append(losses.cpu())
 
             # Validation history
@@ -238,9 +207,6 @@ def main(iterations: int = 10000000,
                 te_hist, *_ = eval(test_loader_eval, net, crit_unreduced, opt)
                 tr_hist, *_ = eval(train_loader_eval, net, crit_unreduced, opt)
 
-                evaluation_history_TEST.append([i + 1, *te_hist])
-                evaluation_history_TRAIN.append([i + 1, *tr_hist])
-
                 # Turn collected iterates (both weights and losses) into numpy arrays
                 if compute_dimensions:
                     weights_history_np = np.stack(tuple(weights_history))
@@ -252,7 +218,6 @@ def main(iterations: int = 10000000,
                 # Ijump defines how many finite set are drawn to perform the affine regression
                 jump_size = int((ripser_points - min_points) / jump)
 
-                subset_dim_dict = {}
                 if compute_dimensions:
 
                     logger.info("Computing euclidean PH dim...")
@@ -292,20 +257,17 @@ def main(iterations: int = 10000000,
                     mean_step_size = np.mean(step_sizes)
 
                 else:
-                    ph_dim_euclidean = "non_computed"
-                    ph_dim_losses_based = "non_computed"
-                    alpha_full_5000 = "non_computed"
-                    alpha_proj_med_5000 = "non_computed"
-                    alpha_proj_max_5000 = "non_computed"
-                    alpha_full_epoch = "non_computed"
-                    alpha_proj_med_epoch = "non_computed"
-                    alpha_proj_max_epoch = "non_computed"
-                    std_dist = "non_computed"
-                    norm = "non_computed"
-                    mean_step_size = "non_computed"
-
-            test_acc = evaluation_history_TEST[-1][2]
-            train_acc = evaluation_history_TRAIN[-1][2]
+                    ph_dim_euclidean = None
+                    ph_dim_losses_based = None
+                    alpha_full_5000 = None
+                    alpha_proj_med_5000 = None
+                    alpha_proj_max_5000 = None
+                    alpha_full_epoch = None
+                    alpha_proj_med_epoch = None
+                    alpha_proj_max_epoch = None
+                    std_dist = None
+                    norm = None
+                    mean_step_size = None
 
             exp_dict = {
                 "ph_dim_euclidean": ph_dim_euclidean,
@@ -319,9 +281,9 @@ def main(iterations: int = 10000000,
                 "std_dist": std_dist,
                 "norm": norm,
                 "step_size": mean_step_size,
-                "train_acc": train_acc,
-                "eval_acc": test_acc,
-                "acc_gap": train_acc - test_acc,
+                "train_acc": tr_hist[1],
+                "eval_acc": te_hist[1],
+                "acc_gap": tr_hist[1] - te_hist[1],
                 "train_loss": tr_hist[0],
                 "test_loss": te_hist[0],
                 "loss_gap": te_hist[0] - tr_hist[0],
@@ -335,8 +297,6 @@ def main(iterations: int = 10000000,
                 "seed": seed,
                 "dataset": dataset,
             }
-            exp_dict.update(subset_dim_dict)
-
             break
 
         # Saving weights if specified
