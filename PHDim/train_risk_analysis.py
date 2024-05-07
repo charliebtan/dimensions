@@ -72,7 +72,8 @@ def main(iterations: int = 10000000,
     if model == 'fc':
         if dataset == 'mnist':
             input_size = 28**2
-            net = mlp_mnist().to(device)
+            #net = mlp_mnist().to(device)
+            net = fc_mnist(input_dim=input_size, width=width, depth=depth, num_classes=num_classes).to(device)
         elif dataset == 'cifar10':
             net = cnn_cifar().to(device)
     elif model == 'alexnet':

@@ -5,7 +5,7 @@ from PHDim.eval import recover_eval_tensors
 
 
 class QuickDataset(torch.utils.data.Dataset):
-    def __init__(self, x, y, device='cuda' if torch.cuda_is_available() else 'cpu'):
+    def __init__(self, x, y, device='cuda' if torch.cuda.is_available() else 'cpu'):
         super().__init__()
         self.x = x.to(device)
         self.y = y.to(device)
