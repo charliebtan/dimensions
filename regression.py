@@ -11,7 +11,6 @@ import wandb
 from loguru import logger
 from pydantic import BaseModel
 from sklearn.datasets import fetch_california_housing
-from sklearn.datasets import load_boston
 from sklearn.model_selection import train_test_split
 
 from models import fc_bhp
@@ -353,7 +352,6 @@ class BHPAnalysis(BaseModel):
     eval_freq: int = 2000
     output_dir: str = "./bhp_experiments"
     iterations: int = 10000000
-    seed: int = 1234
     save_outputs: bool = False
     project_name: str = "ph_dim"
     width: int = 200
@@ -370,13 +368,14 @@ class BHPAnalysis(BaseModel):
     stopping_criterion: float = STOPPING_CRITERION
     ph_period: int = None  # period at which points are taken, if None it will be at the end
     additional_dimensions: bool = False
+    seeds: list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
     def __call__(self):
 
         lr_tab = np.exp(np.linspace(np.log(self.lr_min), np.log(self.lr_max), 6))
         bs_tab = np.linspace(self.bs_min, self.bs_max, 6, dtype=np.int64)
 
-        for seed in range(10):
+        for seed in self.seeds:
 
             for k in range(len(lr_tab)):
                 for b in range(len(bs_tab)):
