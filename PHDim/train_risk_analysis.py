@@ -163,6 +163,10 @@ def main(iterations: int = 10000000,
             logger.error('Loss has gone nan ❌')
             break
 
+        if tr_hist[1] < 20 and i > 100000:
+            logger.error('Training accuracy is below 20% - not converging ❌')
+            break
+
         # calculate the gradients
         loss.backward()
 
