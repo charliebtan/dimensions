@@ -6,26 +6,26 @@ import torch.nn.functional as F
 
 class FC_MNIST(nn.Module):
 
-    def __init__(self, input_dim=28*28, width=50, depth=3, num_classes=10):
+    def __init__(self, input_dim=28*28, width=50, depth=3, num_classes=10, use_bias=True):
         super(FC_MNIST, self).__init__()
         self.input_dim = input_dim
         self.width = width
         self.depth = depth
         self.num_classes = num_classes
 
-        layers = self.get_layers()
+        layers = self.get_layers(use_bias)
 
         self.fc = nn.Sequential(
-            nn.Linear(self.input_dim, self.width, bias=False),
+            nn.Linear(self.input_dim, self.width, bias=use_bias),
             nn.ReLU(inplace=True),
             *layers,
-            nn.Linear(self.width, self.num_classes, bias=False),
+            nn.Linear(self.width, self.num_classes, bias=use_bias),
         )
 
-    def get_layers(self):
+    def get_layers(self, use_bias):
         layers = []
         for i in range(self.depth - 2):
-            layers.append(nn.Linear(self.width, self.width, bias=False))
+            layers.append(nn.Linear(self.width, self.width, bias=use_bias))
             layers.append(nn.ReLU(inplace=True))
         return layers
 
@@ -37,25 +37,25 @@ class FC_MNIST(nn.Module):
 
 class BHP_FCNN(nn.Module):
 
-    def __init__(self, depth: int = 5, width: int = 50, input_dim: int = 13):
+    def __init__(self, depth: int = 5, width: int = 50, input_dim: int = 13, use_bias=True):
         super(BHP_FCNN, self).__init__()
         self.input_dim = input_dim
         self.width = width
         self.depth = depth
 
-        layers = self.get_layers()
+        layers = self.get_layers(use_bias)
 
         self.fc = nn.Sequential(
-            nn.Linear(self.input_dim, self.width, bias=True),
+            nn.Linear(self.input_dim, self.width, bias=use_bias),
             nn.ReLU(inplace=True),
             *layers,
-            nn.Linear(self.width, 1, bias=True),
+            nn.Linear(self.width, 1, bias=use_bias),
         )
 
-    def get_layers(self):
+    def get_layers(self, use_bias):
         layers = []
         for _ in range(self.depth - 2):
-            layers.append(nn.Linear(self.width, self.width, bias=False))
+            layers.append(nn.Linear(self.width, self.width, bias=use_bias))
             layers.append(nn.ReLU())
         return layers
 
