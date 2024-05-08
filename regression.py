@@ -132,7 +132,7 @@ def train_one_model(eval_freq: int = 1000,
 
     # Defining dataloaders
     dataset_train = torch.utils.data.TensorDataset(training_set, training_targets)
-    dataloader = torch.utils.data.DataLoader(dataset_train, batch_size=batch_size, shuffle=True, num_workers=1)
+    dataloader = torch.utils.data.DataLoader(dataset_train, batch_size=batch_size, shuffle=True)
 
     def cycle_training(loader):
         while True:
