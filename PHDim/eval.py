@@ -34,7 +34,7 @@ def eval_on_tensors(x, y, net, criterion):
 
     hist = [
         losses.sum().item() / x.shape[0],
-        prec / x.shape[0],
+        prec,
     ]
 
     return hist, losses, out

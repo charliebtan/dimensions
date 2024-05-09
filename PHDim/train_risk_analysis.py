@@ -163,10 +163,6 @@ def main(iterations: int = 10000000,
             logger.error('Loss has gone nan ❌')
             break
 
-        if tr_hist[1] < 20 and i > 100000:
-            logger.error('Training accuracy is below 20% - not converging ❌')
-            break
-
         # calculate the gradients
         loss.backward()
 
@@ -187,6 +183,11 @@ def main(iterations: int = 10000000,
 
             # Validation history
             te_hist, _, _ = eval_on_tensors(test_x, test_y, net, crit_unreduced)
+        
+        else:
+            if tr_hist[1] < 20 and i > 100000:
+                logger.error('Training accuracy is below 20% - not converging ❌')
+                break
 
         # clear cache
         torch.cuda.empty_cache()
