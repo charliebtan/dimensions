@@ -33,10 +33,8 @@ class AnalysisOptions(BaseModel):
     iterations: int = 10000000000  # Maximum authorized number of iterations
     log_weights: bool = True  # Whether we want to save final weights of the experiment
     batch_size_eval: int = 5000  # batch size used for evaluation
-    lrmin: float = 0.005  # minimum learning rate in teh experiment
-    lrmax: float = 0.1  # maximum learning rate in the experiment
-    bs_min: int = 32  # minimum batch size in the experiment
-    bs_max: int = 256  # maximum batch sie in the experiment
+    lr: float = 1e-2  # minimum learning rate in teh experiment
+    bs: int = 128  # minimum batch size in the experiment
     eval_freq: int = 10000  # at which frequency we evaluate the model (training and validation sets)
     dataset: str = "cifar10"  # dataset we use
     data_path: str = "~/data/"  # where to find the data
@@ -56,53 +54,46 @@ class AnalysisOptions(BaseModel):
     jump: int = 20  # number of finite sets drawn to compute the PH dimension, see https://arxiv.org/abs/2111.13171v1
     additional_dimensions: bool = False  # whether or not compute the ph dimensions used in the robustness experiment
     data_proportion: float = 1. # Proportion of data to use (between 0 and 1), used for pytests
+    random: bool = False  # whether or not to use adversarial initialization
 
     def __call__(self):
-
-        # Defining the grid of hyperparameters
-        lr_tab = np.exp(np.linspace(np.log(self.lrmin), np.log(self.lrmax), self.num_exp_lr))
-        bs_tab = np.linspace(self.bs_min, self.bs_max, self.num_exp_bs, dtype=np.int64)
 
         logger.info(f"Launching {self.num_exp_lr * self.num_exp_bs} experiences")
 
         for seed in self.seeds:
 
-            for k in range(min(self.num_exp_lr, len(lr_tab))):
+            # Initial weights should be stored in
 
-                for j in range(min(self.num_exp_bs, len(bs_tab))):
-
-                    # Initial weights should be stored in
-
-                    # Uncomment for wandb logging
-                    reset_wandb_env()
-                    wandb.init(project=self.project_name, entity='ctan',
-                            config=self.dict())
-
-                    # Here the seed is not changed
-                    logger.info(f"EXPERIENCE NUMBER {k}:{j}")
-
-                    exp_dict = risk_analysis(
-                        self.iterations,
-                        int(bs_tab[j]),
-                        self.batch_size_eval,
-                        lr_tab[k],
-                        self.eval_freq,
-                        self.dataset,
-                        self.data_path,
-                        self.model,
-                        self.depth,
-                        self.width,
-                        self.optim,
-                        self.min_points,
-                        seed,
-                        f'{self.model}_{self.depth}_{self.dataset}_{lr_tab[k]}_{bs_tab[j]}_{seed}.pth',
-                        self.compute_dimensions,
-                        ripser_points=self.ripser_points,
-                        jump=self.jump,
+            # Uncomment for wandb logging
+            reset_wandb_env()
+            wandb.init(project=self.project_name, entity='ctan',
+                    config=self.dict(),
+                    tags=['adv_init'] if self.random else ['normal_init'],
                     )
 
-                    wandb.log(exp_dict)
-                    wandb.finish()
+            exp_dict = risk_analysis(
+                self.iterations,
+                self.bs,
+                self.batch_size_eval,
+                self.lr,
+                self.eval_freq,
+                self.dataset,
+                self.data_path,
+                self.model,
+                self.depth,
+                self.width,
+                self.optim,
+                self.min_points,
+                seed,
+                f'{self.model}_{self.depth}_{self.dataset}_{self.lr}_{self.bs}_{seed}.pth',
+                self.compute_dimensions,
+                ripser_points=self.ripser_points,
+                jump=self.jump,
+                random=self.random,
+            )
+
+            wandb.log(exp_dict)
+            wandb.finish()
 
 if __name__ == "__main__":
     fire.Fire(AnalysisOptions)

@@ -48,6 +48,7 @@ def main(iterations: int = 10000000,
          compute_dimensions: bool = True,
          ripser_points: int = 1000,
          jump: int = 20,
+         random: bool = False,
          ):
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -60,7 +61,7 @@ def main(iterations: int = 10000000,
     # training setup
     if dataset not in ["mnist", "cifar10"]:
         raise NotImplementedError(f"Dataset {dataset} not implemented, should be in ['mnist', 'cifar10']")
-    train_loader, test_loader_eval, train_loader_eval, num_classes = get_data_simple(dataset,
+    train_loader, test_loader_eval, train_loader_eval, num_classes, train_loader_random = get_data_simple(dataset,
                                                          data_path,
                                                          batch_size_train,
                                                          batch_size_eval,
@@ -122,6 +123,23 @@ def main(iterations: int = 10000000,
         net.parameters(),
         lr=lr,
     )
+
+    if random:
+
+        RAND_CONVERGED = False
+
+        while not RAND_CONVERGED:
+            for x, y in train_loader_random:
+                net.train()
+                x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
+                opt.zero_grad()
+                out = net(x)
+                loss = crit(out, y)
+                loss.backward()
+                opt.step()
+            rand_hist, _, _ = eval(train_loader_random, net, crit_unreduced, opt)
+            acc = rand_hist[1]
+            print(acc)
 
     logger.info("Starting training")
     for i, (x, y) in enumerate(circ_train_loader):
