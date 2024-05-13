@@ -137,7 +137,7 @@ def main(iterations: int = 10000000,
             loss.backward()
             opt.step()
 
-            if i % 10000 == 0:
+            if i % 1000 == 0:
                 rand_hist, _, _ = eval(train_loader_random_eval, net, crit_unreduced, opt)
                 loss, acc = rand_hist
                 print(i, loss, acc)
