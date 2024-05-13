@@ -2,7 +2,7 @@ import torch.nn as nn
 
 
 class CNN(nn.Module):
-    def __init__(self, base_width, input_shape=(3, 32, 32), num_classes=10, use_bn=False):
+    def __init__(self, base_width=64, input_shape=(3, 32, 32), num_classes=10, use_bn=False):
         super().__init__()
 
         widths = [input_shape[0]] + [base_width * 2**i for i in range(4)]

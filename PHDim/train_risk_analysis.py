@@ -68,7 +68,7 @@ def main(iterations: int = 10000000,
                                                          subset=1.0)
 
     # TODO: use the args here
-    if model not in ["fc", "alexnet", "vgg", "lenet"]:
+    if model not in ["fc", "alexnet", "vgg", "lenet", 'cnn']:
         raise NotImplementedError(f"Model {model} not implemented, should be in ['fc', 'alexnet', 'vgg']")
     if model == 'fc':
         if dataset == 'mnist':
