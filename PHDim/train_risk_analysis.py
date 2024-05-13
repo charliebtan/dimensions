@@ -140,7 +140,7 @@ def main(iterations: int = 10000000,
             if i % 1000 == 0:
                 rand_hist, _, _ = eval(train_loader_random_eval, net, crit_unreduced, opt)
                 loss, acc = rand_hist
-                print(i, loss, acc)
+                print(i, loss, acc, flush=True)
                 if int(acc) == 100:
                     print(f'All random training data is correctly classified in {i} iterations! ✅')
                     torch.save(net.state_dict(), 'adv_'+ str(save_weights_file))
