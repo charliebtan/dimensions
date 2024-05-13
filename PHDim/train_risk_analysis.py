@@ -327,7 +327,7 @@ def main(iterations: int = 10000000,
                 "iterations": i,
                 "seed": seed,
                 "dataset": dataset,
-                "init": 'adv' if random else 'normal',
+                "init": 'adv' if random else 'random',
             }
             break
 
