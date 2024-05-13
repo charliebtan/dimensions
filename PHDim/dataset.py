@@ -137,5 +137,14 @@ def get_data(args: DataOptions, subset_percentage: float = None):
         shuffle=True,
     )
 
+    # get tr_loader for train/eval and te_loader for eval
+    train_loader_random_eval = torch.utils.data.DataLoader(
+        dataset=train_dataset_random,
+        batch_size=args.batch_size_eval,
+        shuffle=False,
+    )
 
-    return train_loader, test_loader_eval, train_loader_eval, num_classes, train_loader_random
+
+
+
+    return train_loader, test_loader_eval, train_loader_eval, num_classes, train_loader_random, train_loader_random_eval

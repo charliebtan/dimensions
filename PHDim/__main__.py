@@ -58,8 +58,6 @@ class AnalysisOptions(BaseModel):
 
     def __call__(self):
 
-        logger.info(f"Launching {self.num_exp_lr * self.num_exp_bs} experiences")
-
         for seed in self.seeds:
 
             # Initial weights should be stored in

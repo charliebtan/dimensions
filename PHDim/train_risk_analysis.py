@@ -61,7 +61,7 @@ def main(iterations: int = 10000000,
     # training setup
     if dataset not in ["mnist", "cifar10"]:
         raise NotImplementedError(f"Dataset {dataset} not implemented, should be in ['mnist', 'cifar10']")
-    train_loader, test_loader_eval, train_loader_eval, num_classes, train_loader_random = get_data_simple(dataset,
+    train_loader, test_loader_eval, train_loader_eval, num_classes, train_loader_random, train_loader_random_eval = get_data_simple(dataset,
                                                          data_path,
                                                          batch_size_train,
                                                          batch_size_eval,
@@ -103,6 +103,7 @@ def main(iterations: int = 10000000,
                 yield data
 
     circ_train_loader = cycle_loader(train_loader)
+    circ_train_loader_random = cycle_loader(train_loader_random)
 
     # Recovering evaluation tensors (made to speed up the experiment)
     eval_x, eval_y = recover_eval_tensors(train_loader_eval)
@@ -126,20 +127,25 @@ def main(iterations: int = 10000000,
 
     if random:
 
-        RAND_CONVERGED = False
+        for i, (x, y) in enumerate(circ_train_loader_random):
 
-        while not RAND_CONVERGED:
-            for x, y in train_loader_random:
-                net.train()
-                x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
-                opt.zero_grad()
-                out = net(x)
-                loss = crit(out, y)
-                loss.backward()
-                opt.step()
-            rand_hist, _, _ = eval(train_loader_random, net, crit_unreduced, opt)
-            acc = rand_hist[1]
-            print(acc)
+            net.train()
+            x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
+            opt.zero_grad()
+            out = net(x)
+            loss = crit(out, y)
+            loss.backward()
+            opt.step()
+
+            if i % 10000 == 0:
+                rand_hist, _, _ = eval(train_loader_random_eval, net, crit_unreduced, opt)
+                loss, acc = rand_hist
+                print(i, loss, acc)
+                if int(acc) == 100:
+                    print(f'All random training data is correctly classified in {i} iterations! ✅')
+                    torch.save(net.state_dict(), 'adv_'+ str(save_weights_file))
+                    break   
+        
 
     logger.info("Starting training")
     for i, (x, y) in enumerate(circ_train_loader):
