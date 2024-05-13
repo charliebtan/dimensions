@@ -209,7 +209,7 @@ def main(iterations: int = 10000000,
             te_hist, _, _ = eval_on_tensors(test_x, test_y, net, crit_unreduced)
         
         else:
-            if tr_hist[1] < 20 and i > 100000:
+            if tr_hist[1] < 15 and i > 1000000:
                 logger.error('Training accuracy is below 20% - not converging ❌')
                 break
 
