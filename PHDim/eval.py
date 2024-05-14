@@ -51,9 +51,9 @@ def eval(eval_loader, net, criterion, opt, eval: bool = False):
     net.eval()
 
     # run over both test and train set
-    total_size = 0
-    total_loss = 0
-    total_acc = 0
+    total_size = torch.tensor([0], device=device)
+    total_loss = torch.tensor([0.0], device=device)
+    total_acc = torch.tensor([0.0], device=device)
     losses = []
     outputs = []
 
@@ -68,16 +68,16 @@ def eval(eval_loader, net, criterion, opt, eval: bool = False):
         prec = accuracy(out, y)
         bs = x.size(0)
 
-        total_size += int(bs)
-        total_loss += float(losses_unreduced.sum().cpu().item())
-        total_acc += float(prec) * bs
+        total_size += bs
+        total_loss += losses_unreduced.sum()
+        total_acc += prec * bs
 
         losses.append(losses_unreduced)
         outputs.append(out.flatten())
 
     hist = [
-        total_loss / total_size,
-        total_acc / total_size,
+        (total_loss / total_size).item(),
+        (total_acc / total_size).item(),
     ]
 
     # losses: list of tensors of shape (batch_size)

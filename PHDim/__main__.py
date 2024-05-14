@@ -35,7 +35,7 @@ class AnalysisOptions(BaseModel):
     batch_size_eval: int = 5000  # batch size used for evaluation
     lr: float = 1e-2  # minimum learning rate in teh experiment
     bs: int = 128  # minimum batch size in the experiment
-    eval_freq: int = 10000  # at which frequency we evaluate the model (training and validation sets)
+    eval_freq: int = 1000  # at which frequency we evaluate the model (training and validation sets)
     dataset: str = "cifar10"  # dataset we use
     data_path: str = "~/data/"  # where to find the data
     model: str = "alexnet"  # model, currently supported: ["fc", "alexnet", "vgg", "lenet"]
@@ -60,38 +60,40 @@ class AnalysisOptions(BaseModel):
 
         for seed in self.seeds:
 
-            # Initial weights should be stored in
+            for random in [True, False]:
 
-            # Uncomment for wandb logging
-            reset_wandb_env()
-            wandb.init(project=self.project_name, entity='ctan',
-                    config=self.dict(),
-                    tags=['adv_init'] if self.random else ['normal_init'],
-                    )
+                # Initial weights should be stored in
 
-            exp_dict = risk_analysis(
-                self.iterations,
-                self.bs,
-                self.batch_size_eval,
-                self.lr,
-                self.eval_freq,
-                self.dataset,
-                self.data_path,
-                self.model,
-                self.depth,
-                self.width,
-                self.optim,
-                self.min_points,
-                seed,
-                f'{self.model}_{self.depth}_{self.dataset}_{self.lr}_{self.bs}_{seed}.pth',
-                self.compute_dimensions,
-                ripser_points=self.ripser_points,
-                jump=self.jump,
-                random=self.random,
-            )
+                # Uncomment for wandb logging
+                reset_wandb_env()
+                wandb.init(project=self.project_name, entity='ctan',
+                        config=self.dict(),
+                        tags=['adv_init'] if self.random else ['normal_init'],
+                        )
 
-            wandb.log(exp_dict)
-            wandb.finish()
+                exp_dict = risk_analysis(
+                    self.iterations,
+                    self.bs,
+                    self.batch_size_eval,
+                    self.lr,
+                    self.eval_freq,
+                    self.dataset,
+                    self.data_path,
+                    self.model,
+                    self.depth,
+                    self.width,
+                    self.optim,
+                    self.min_points,
+                    seed,
+                    f'{self.model}_{self.depth}_{self.dataset}_{self.lr}_{self.bs}_{seed}.pth',
+                    self.compute_dimensions,
+                    ripser_points=self.ripser_points,
+                    jump=self.jump,
+                    random=random,
+                )
+
+                wandb.log(exp_dict)
+                wandb.finish()
 
 if __name__ == "__main__":
     fire.Fire(AnalysisOptions)

@@ -204,12 +204,11 @@ def main(iterations: int = 10000000,
             weights_history.append(get_weights(net))
 
             if compute_dimensions:
-                tr_hist, losses, _ = eval_on_tensors(eval_x, eval_y, net, crit_unreduced)
+                tr_hist, losses, _ = eval(train_loader_eval, net, crit_unreduced, opt)
                 loss_history.append(losses.cpu())
 
             # Validation history
-            te_hist, _, _ = eval_on_tensors(test_x, test_y, net, crit_unreduced)
-        
+            te_hist, _, _ = eval(test_loader_eval, net, crit_unreduced, opt)
         else:
             if tr_hist[1] < 15 and i > 1000000:
                 logger.error('Training accuracy is below 20% - not converging ❌')
