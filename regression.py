@@ -361,10 +361,10 @@ class BHPAnalysis(BaseModel):
     min_points: int = 1000
     dataset: str = "california"
     model: str = "fcnn"
-    bs_min: int = 32
-    bs_max: int = 200
-    lr_min: float = 1e-3
-    lr_max: float = 1e-2
+    #bs_min: int = 32
+    #bs_max: int = 200
+    #lr_min: float = 1e-3
+    #lr_max: float = 1e-2
     stopping_criterion: float = STOPPING_CRITERION
     ph_period: int = None  # period at which points are taken, if None it will be at the end
     additional_dimensions: bool = False
@@ -372,8 +372,9 @@ class BHPAnalysis(BaseModel):
 
     def __call__(self):
 
-        lr_tab = np.exp(np.linspace(np.log(self.lr_min), np.log(self.lr_max), 6))
-        bs_tab = np.linspace(self.bs_min, self.bs_max, 6, dtype=np.int64)
+        # Defining the grid of hyperparameters
+        lr_tab = np.logspace(-4, -1, 10, base=10)
+        bs_tab = np.logspace(3, 12, 10, base=2, dtype=np.int64)
 
         for seed in self.seeds:
 

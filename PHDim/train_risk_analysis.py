@@ -187,6 +187,7 @@ def main(iterations: int = 10000000,
         else:
             if tr_hist[1] < 20 and i > 100000:
                 logger.error('Training accuracy is below 20% - not converging ❌')
+                exp_dict = {'not_converging': True}
                 break
 
         # clear cache

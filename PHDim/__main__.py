@@ -33,10 +33,10 @@ class AnalysisOptions(BaseModel):
     iterations: int = 10000000000  # Maximum authorized number of iterations
     log_weights: bool = True  # Whether we want to save final weights of the experiment
     batch_size_eval: int = 5000  # batch size used for evaluation
-    lrmin: float = 0.005  # minimum learning rate in teh experiment
-    lrmax: float = 0.1  # maximum learning rate in the experiment
-    bs_min: int = 32  # minimum batch size in the experiment
-    bs_max: int = 256  # maximum batch sie in the experiment
+    #lrmin: float = 0.005  # minimum learning rate in teh experiment
+    #lrmax: float = 0.1  # maximum learning rate in the experiment
+    #bs_min: int = 32  # minimum batch size in the experiment
+    #bs_max: int = 256  # maximum batch sie in the experiment
     eval_freq: int = 10000  # at which frequency we evaluate the model (training and validation sets)
     dataset: str = "cifar10"  # dataset we use
     data_path: str = "~/data/"  # where to find the data
@@ -60,8 +60,8 @@ class AnalysisOptions(BaseModel):
     def __call__(self):
 
         # Defining the grid of hyperparameters
-        lr_tab = np.exp(np.linspace(np.log(self.lrmin), np.log(self.lrmax), self.num_exp_lr))
-        bs_tab = np.linspace(self.bs_min, self.bs_max, self.num_exp_bs, dtype=np.int64)
+        lr_tab = np.logspace(-4, -1, 10, base=10)
+        bs_tab = np.logspace(3, 12, 10, base=2, dtype=np.int64)
 
         logger.info(f"Launching {self.num_exp_lr * self.num_exp_bs} experiences")
 
