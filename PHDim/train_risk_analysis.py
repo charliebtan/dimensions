@@ -7,7 +7,7 @@ import torch.nn as nn
 import wandb
 from loguru import logger
 
-from models import alexnet, fc_mnist, vgg, fc_cifar, lenet
+from models import alexnet, fc_mnist, vgg, fc_cifar, lenet, cnn
 from models.vgg import vgg as make_vgg
 from topology import fast_ripser
 from utils import accuracy
@@ -48,6 +48,7 @@ def main(iterations: int = 10000000,
          compute_dimensions: bool = True,
          ripser_points: int = 1000,
          jump: int = 20,
+         random: bool = False,
          ):
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -60,14 +61,14 @@ def main(iterations: int = 10000000,
     # training setup
     if dataset not in ["mnist", "cifar10"]:
         raise NotImplementedError(f"Dataset {dataset} not implemented, should be in ['mnist', 'cifar10']")
-    train_loader, test_loader_eval, train_loader_eval, num_classes = get_data_simple(dataset,
+    train_loader, test_loader_eval, train_loader_eval, num_classes, train_loader_random, train_loader_random_eval = get_data_simple(dataset,
                                                          data_path,
                                                          batch_size_train,
                                                          batch_size_eval,
                                                          subset=1.0)
 
     # TODO: use the args here
-    if model not in ["fc", "alexnet", "vgg", "lenet"]:
+    if model not in ["fc", "alexnet", "vgg", "lenet", 'cnn']:
         raise NotImplementedError(f"Model {model} not implemented, should be in ['fc', 'alexnet', 'vgg']")
     if model == 'fc':
         if dataset == 'mnist':
@@ -80,6 +81,8 @@ def main(iterations: int = 10000000,
             net = alexnet(input_height=28, input_width=28, input_channels=1, num_classes=num_classes).to(device)
         else:
             net = alexnet(ch=64, num_classes=num_classes).to(device)
+    elif model == 'cnn':
+        net = cnn().to(device)
     elif model == 'vgg':
         net = make_vgg(depth=depth, num_classes=num_classes, batch_norm=False).to(device)
     elif model == "lenet":
@@ -102,6 +105,7 @@ def main(iterations: int = 10000000,
                 yield data
 
     circ_train_loader = cycle_loader(train_loader)
+    circ_train_loader_random = cycle_loader(train_loader_random)
 
     # Recovering evaluation tensors (made to speed up the experiment)
     eval_x, eval_y = recover_eval_tensors(train_loader_eval)
@@ -122,6 +126,28 @@ def main(iterations: int = 10000000,
         net.parameters(),
         lr=lr,
     )
+
+    if random:
+
+        for i, (x, y) in enumerate(circ_train_loader_random):
+
+            net.train()
+            x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
+            opt.zero_grad()
+            out = net(x)
+            loss = crit(out, y)
+            loss.backward()
+            opt.step()
+
+            if i % 1000 == 0:
+                rand_hist, _, _ = eval(train_loader_random_eval, net, crit_unreduced, opt)
+                loss, acc = rand_hist
+                print(i, loss, acc, flush=True)
+                if int(acc) == 100:
+                    print(f'All random training data is correctly classified in {i} iterations! ✅')
+                    torch.save(net.state_dict(), 'adv_'+ str(save_weights_file))
+                    break   
+        
 
     logger.info("Starting training")
     for i, (x, y) in enumerate(circ_train_loader):
@@ -178,12 +204,11 @@ def main(iterations: int = 10000000,
             weights_history.append(get_weights(net))
 
             if compute_dimensions:
-                tr_hist, losses, _ = eval_on_tensors(eval_x, eval_y, net, crit_unreduced)
+                tr_hist, losses, _ = eval(train_loader_eval, net, crit_unreduced, opt)
                 loss_history.append(losses.cpu())
 
             # Validation history
-            te_hist, _, _ = eval_on_tensors(test_x, test_y, net, crit_unreduced)
-        
+            te_hist, _, _ = eval(test_loader_eval, net, crit_unreduced, opt)
         else:
             if tr_hist[1] < 20 and i > 100000:
                 logger.error('Training accuracy is below 20% - not converging ❌')
@@ -302,6 +327,7 @@ def main(iterations: int = 10000000,
                 "iterations": i,
                 "seed": seed,
                 "dataset": dataset,
+                "init": 'adv' if random else 'random',
             }
             break
 

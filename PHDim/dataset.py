@@ -5,10 +5,13 @@ from PHDim.eval import recover_eval_tensors
 
 
 class QuickDataset(torch.utils.data.Dataset):
-    def __init__(self, x, y, device='cuda' if torch.cuda.is_available() else 'cpu'):
+    def __init__(self, x, y, device='cuda' if torch.cuda.is_available() else 'cpu', random=False):
         super().__init__()
         self.x = x.to(device)
         self.y = y.to(device)
+
+        if random:
+            self.y = self.y[torch.randperm(len(self.y))]
     
     def __len__(self):
         return len(self.y)
@@ -105,6 +108,8 @@ def get_data(args: DataOptions, subset_percentage: float = None):
     train_dataset = QuickDataset(train_x, train_y)
     test_dataset = QuickDataset(test_x, test_y)
 
+    train_dataset_random = QuickDataset(train_x, train_y, random=True)
+
     # get tr_loader for train/eval and te_loader for eval
     train_loader = torch.utils.data.DataLoader(
         dataset=train_dataset,
@@ -125,4 +130,21 @@ def get_data(args: DataOptions, subset_percentage: float = None):
         shuffle=False,
     )
 
-    return train_loader, test_loader_eval, train_loader_eval, num_classes
+    # get tr_loader for train/eval and te_loader for eval
+    train_loader_random = torch.utils.data.DataLoader(
+        dataset=train_dataset_random,
+        batch_size=args.batch_size_train,
+        shuffle=True,
+    )
+
+    # get tr_loader for train/eval and te_loader for eval
+    train_loader_random_eval = torch.utils.data.DataLoader(
+        dataset=train_dataset_random,
+        batch_size=args.batch_size_eval,
+        shuffle=False,
+    )
+
+
+
+
+    return train_loader, test_loader_eval, train_loader_eval, num_classes, train_loader_random, train_loader_random_eval
