@@ -51,6 +51,8 @@ def main(iterations: int = 10000000,
          random: bool = False,
          ):
 
+    print(batch_size_train, lr, flush=True)
+
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
     logger.info(f"on device {str(device)}")
