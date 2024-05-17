@@ -189,6 +189,19 @@ def main(iterations: int = 10000000,
 
         if torch.isnan(loss):
             logger.error('Loss has gone nan ❌')
+            exp_dict = {
+                'nan': True,
+                "learning_rate": lr,
+                "batch_size": int(batch_size_train),
+                "LB_ratio": lr / batch_size_train,
+                "depth": depth,
+                "width": width,
+                "model": model,
+                "iterations": i,
+                "seed": seed,
+                "dataset": dataset,
+                "init": 'adv' if random else 'random'
+                }
             break
 
         # calculate the gradients
