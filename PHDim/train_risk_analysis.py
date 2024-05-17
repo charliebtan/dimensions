@@ -221,7 +221,25 @@ def main(iterations: int = 10000000,
         else:
             if tr_hist[1] < 20 and i > 100000:
                 logger.error('Training accuracy is below 20% - not converging ❌')
-                exp_dict = {'not_converging': True}
+                exp_dict = {
+                    'not_converging': True,
+                    "train_acc": tr_hist[1],
+                    "eval_acc": te_hist[1],
+                    "acc_gap": tr_hist[1] - te_hist[1],
+                    "train_loss": tr_hist[0],
+                    "test_loss": te_hist[0],
+                    "loss_gap": te_hist[0] - tr_hist[0],
+                    "learning_rate": lr,
+                    "batch_size": int(batch_size_train),
+                    "LB_ratio": lr / batch_size_train,
+                    "depth": depth,
+                    "width": width,
+                    "model": model,
+                    "iterations": i,
+                    "seed": seed,
+                    "dataset": dataset,
+                    "init": 'adv' if random else 'random'
+                    }
                 break
 
 
