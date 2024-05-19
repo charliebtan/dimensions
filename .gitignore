@@ -1,4 +1,6 @@
 model_files/*
+old_cnn_dd/*
+
 *.txt
 
 .vscode/
