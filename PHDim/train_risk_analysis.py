@@ -49,6 +49,7 @@ def main(iterations: int = 10000000,
          ripser_points: int = 1000,
          jump: int = 20,
          random: bool = False,
+         cnn_width: int = 64,
          ):
 
     print(batch_size_train, lr, flush=True)
@@ -61,7 +62,7 @@ def main(iterations: int = 10000000,
     torch.set_float32_matmul_precision('high')
 
     # training setup
-    if dataset not in ["mnist", "cifar10"]:
+    if dataset not in ["mnist", "cifar10", 'cifar100']:
         raise NotImplementedError(f"Dataset {dataset} not implemented, should be in ['mnist', 'cifar10']")
     train_loader, test_loader_eval, train_loader_eval, num_classes, train_loader_random, train_loader_random_eval = get_data_simple(dataset,
                                                          data_path,
@@ -84,7 +85,7 @@ def main(iterations: int = 10000000,
         else:
             net = alexnet(ch=64, num_classes=num_classes).to(device)
     elif model == 'cnn':
-        net = cnn().to(device)
+        net = cnn(cnn_width, classes = 100).to(device)
     elif model == 'vgg':
         net = make_vgg(depth=depth, num_classes=num_classes, batch_norm=False).to(device)
     elif model == "lenet":
@@ -129,27 +130,9 @@ def main(iterations: int = 10000000,
         lr=lr,
     )
 
-    if random:
-
-        for i, (x, y) in enumerate(circ_train_loader_random):
-
-            net.train()
-            x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
-            opt.zero_grad()
-            out = net(x)
-            loss = crit(out, y)
-            loss.backward()
-            opt.step()
-
-            if i % 1000 == 0:
-                rand_hist, _, _ = eval(train_loader_random_eval, net, crit_unreduced, opt)
-                loss, acc = rand_hist
-                print(i, loss, acc, flush=True)
-                if int(acc) == 100:
-                    print(f'All random training data is correctly classified in {i} iterations! ✅')
-                    torch.save(net.state_dict(), 'adv_'+ str(save_weights_file))
-                    break   
-        
+    #inv_square_root = lambda l: 1.0 / (1.0 + l)**0.5
+    #inv_square_root = lambda l: 1.0
+    #lr_sched = torch.optim.lr_scheduler.LambdaLR(opt, lr_lambda=inv_square_root, verbose=True)
 
     logger.info("Starting training")
     for i, (x, y) in enumerate(circ_train_loader):
@@ -184,6 +167,7 @@ def main(iterations: int = 10000000,
         out = net(x)
         loss = crit(out, y)
 
+
         if i % 1000 == 0:
             logger.info(f"Loss at iteration {i}: {loss.item()}")
 
@@ -196,6 +180,10 @@ def main(iterations: int = 10000000,
 
         # take the step
         opt.step()
+
+        #if (i + 1) % 512 == 0 and not CONVERGED:
+        #    lr_sched.step()
+        #    print(lr_sched.get_last_lr())
 
         if i > iterations:
             CONVERGED = True
@@ -212,10 +200,11 @@ def main(iterations: int = 10000000,
             # Validation history
             te_hist, _, _ = eval(test_loader_eval, net, crit_unreduced, opt)
         else:
-            if tr_hist[1] < 20 and i > 100000:
-                logger.error('Training accuracy is below 20% - not converging ❌')
-                exp_dict = {'not_converging': True}
-                break
+            pass
+            #if tr_hist[1] < 20 and i > 100000:
+            #    logger.error('Training accuracy is below 20% - not converging ❌')
+            #    exp_dict = {'not_converging': True}
+            #    break
 
         # clear cache
         torch.cuda.empty_cache()
@@ -330,6 +319,7 @@ def main(iterations: int = 10000000,
                 "seed": seed,
                 "dataset": dataset,
                 "init": 'adv' if random else 'random',
+                "cnn_width": cnn_width,
             }
             break
 

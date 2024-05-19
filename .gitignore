@@ -1,5 +1,8 @@
 model_files/*
 old_cnn_dd/*
+adv_cnn/*
+alexnet_adv/*
+nohup*
 
 *.txt
 

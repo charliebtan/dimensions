@@ -23,5 +23,5 @@ class CNN(nn.Module):
         x = self.layers(x)
         return self.linear(x.flatten(start_dim=1))
 
-def cnn():
-    return CNN()
+def cnn(width, classes):
+    return CNN(base_width=width, num_classes=classes)
