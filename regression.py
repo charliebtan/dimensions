@@ -371,11 +371,12 @@ class BHPAnalysis(BaseModel):
     additional_dimensions: bool = False
     seeds: list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     batch_sizes: list = [8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096]
+    learning_rates: list = np.logspace(-4, -1, 10, base=10)
 
     def __call__(self):
 
         # Defining the grid of hyperparameters
-        lr_tab = np.logspace(-4, -1, 10, base=10)
+        lr_tab = self.learning_rates
         bs_tab = self.batch_sizes
 
         print('lr_tab', lr_tab)
