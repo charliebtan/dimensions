@@ -58,6 +58,7 @@ class AnalysisOptions(BaseModel):
     additional_dimensions: bool = False  # whether or not compute the ph dimensions used in the robustness experiment
     data_proportion: float = 1. # Proportion of data to use (between 0 and 1), used for pytests
     widths: list = [2,4,6,8,10,12,14,16,18,20,22,24,28,32,40,48,56,64]  # Widths of the CNN
+    cat: int = 0
 
     def __call__(self):
 
@@ -65,7 +66,18 @@ class AnalysisOptions(BaseModel):
         batch_size = 128
         seed = 0
 
-        for width in self.widths:
+        cat = self.cat
+
+        if cat == 0:
+            widths = [2,10,18,26,36,52]
+        elif cat == 1:
+            widths = [4,12,20,28,40,56]
+        elif cat == 2:
+            widths = [6,14,22,30,44,60]
+        elif cat == 3:
+            widths = [8,16,24,32,48,64]
+
+        for width in widths:
 
             # Initial weights should be stored in
 
