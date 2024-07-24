@@ -38,7 +38,7 @@ class AnalysisOptions(BaseModel):
     #bs_min: int = 32  # minimum batch size in the experiment
     #bs_max: int = 256  # maximum batch sie in the experiment
     eval_freq: int = 10000  # at which frequency we evaluate the model (training and validation sets)
-    dataset: str = "cifar10"  # dataset we use
+    dataset: str = "cifar100"  # dataset we use
     data_path: str = "~/data/"  # where to find the data
     model: str = "alexnet"  # model, currently supported: ["fc", "alexnet", "vgg", "lenet"]
     save_folder: str = "./results"  # Where to save the results
@@ -57,11 +57,11 @@ class AnalysisOptions(BaseModel):
     jump: int = 20  # number of finite sets drawn to compute the PH dimension, see https://arxiv.org/abs/2111.13171v1
     additional_dimensions: bool = False  # whether or not compute the ph dimensions used in the robustness experiment
     data_proportion: float = 1. # Proportion of data to use (between 0 and 1), used for pytests
-    widths: list = [2,4,6,8,10,12,14,16,18,20,24]  # Widths of the CNN
+    widths: list = [2,4,6,8,10,12,14,16,18,20,22,24,28,32,40,48,56,64]  # Widths of the CNN
 
     def __call__(self):
 
-        lr = 2e-4
+        lr = 1e-2
         batch_size = 128
         seed = 0
 
