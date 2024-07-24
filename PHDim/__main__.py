@@ -77,6 +77,9 @@ class AnalysisOptions(BaseModel):
         elif cat == 3:
             widths = [8,16,24,32,48,64]
 
+        if seed == 1:
+            widths = reversed(widths)
+
         for width in widths:
 
             # Initial weights should be stored in
