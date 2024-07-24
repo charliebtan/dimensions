@@ -40,7 +40,7 @@ class AnalysisOptions(BaseModel):
     eval_freq: int = 10000  # at which frequency we evaluate the model (training and validation sets)
     dataset: str = "cifar100"  # dataset we use
     data_path: str = "~/data/"  # where to find the data
-    model: str = "alexnet"  # model, currently supported: ["fc", "alexnet", "vgg", "lenet"]
+    model: str = "cnn"  # model, currently supported: ["fc", "alexnet", "vgg", "lenet"]
     save_folder: str = "./results"  # Where to save the results
     depth: int = 5  # depth of the network (for FCNN)
     width: int = 200  # width of the network (for FCNN)
