@@ -53,7 +53,7 @@ class AnalysisOptions(BaseModel):
     initial_weights: str = None  # Initial weights if they exist, always none in our work
     ripser_points: int = 5000  # Maximum number of points used to compute the PH dimension
     #batch_sizes: list = [8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096]
-    seeds: list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    seed: int = 0
     jump: int = 20  # number of finite sets drawn to compute the PH dimension, see https://arxiv.org/abs/2111.13171v1
     additional_dimensions: bool = False  # whether or not compute the ph dimensions used in the robustness experiment
     data_proportion: float = 1. # Proportion of data to use (between 0 and 1), used for pytests
@@ -64,7 +64,7 @@ class AnalysisOptions(BaseModel):
 
         lr = 1e-2
         batch_size = 128
-        seed = 0
+        seed = self.seed
 
         cat = self.cat
 
