@@ -130,9 +130,10 @@ def main(iterations: int = 10000000,
         lr=lr,
     )
 
-    #inv_square_root = lambda l: 1.0 / (1.0 + l)**0.5
+    inv_square_root = lambda l: 1.0 / (1.0 + l)**0.5
+    lr_sched = torch.optim.lr_scheduler.LambdaLR(opt, lr_lambda=inv_square_root, verbose=True)
+
     #inv_square_root = lambda l: 1.0
-    #lr_sched = torch.optim.lr_scheduler.LambdaLR(opt, lr_lambda=inv_square_root, verbose=True)
 
     logger.info("Starting training")
     for i, (x, y) in enumerate(circ_train_loader):
@@ -181,9 +182,9 @@ def main(iterations: int = 10000000,
         # take the step
         opt.step()
 
-        #if (i + 1) % 512 == 0 and not CONVERGED:
-        #    lr_sched.step()
-        #    print(lr_sched.get_last_lr())
+        if (i + 1) % 512 == 0 and not CONVERGED:
+            lr_sched.step()
+            print(lr_sched.get_last_lr())
 
         if i > iterations:
             CONVERGED = True
