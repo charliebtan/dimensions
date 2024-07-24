@@ -31,7 +31,7 @@ def get_weights(net):
         return torch.cat(w).cpu().numpy()
 
 
-def main(iterations: int = 10000000,
+def main(iterations: int = 100_000,
          batch_size_train: int = 100,
          batch_size_eval: int = 1000,
          lr: float = 1.e-1,
@@ -150,7 +150,6 @@ def main(iterations: int = 10000000,
                     torch.save(net.state_dict(), 'adv_'+ str(save_weights_file))
                     break   
         
-
     logger.info("Starting training")
     for i, (x, y) in enumerate(circ_train_loader):
 
@@ -231,29 +230,11 @@ def main(iterations: int = 10000000,
             else:
                 te_hist, _, _ = eval(test_loader_eval, net, crit_unreduced, opt)
 
-        else:
-            if tr_hist[1] < 20 and i > 100000:
-                logger.error('Training accuracy is below 20% - not converging ❌')
-                exp_dict = {
-                    'not_converging': True,
-                    "train_acc": tr_hist[1],
-                    "eval_acc": te_hist[1],
-                    "acc_gap": tr_hist[1] - te_hist[1],
-                    "train_loss": tr_hist[0],
-                    "test_loss": te_hist[0],
-                    "loss_gap": te_hist[0] - tr_hist[0],
-                    "learning_rate": lr,
-                    "batch_size": int(batch_size_train),
-                    "LB_ratio": lr / batch_size_train,
-                    "depth": depth,
-                    "width": width,
-                    "model": model,
-                    "iterations": i,
-                    "seed": seed,
-                    "dataset": dataset,
-                    "init": 'adv' if random else 'random'
-                    }
-                break
+        # else:
+        #     if tr_hist[1] < 20 and i > 100_000:
+        #         logger.error('Training accuracy is below 20% - not converging ❌')
+        #         not_converging = True
+        #         CONVERGED = True # still say we've converge to compute ph dim
 
 
         # clear cache

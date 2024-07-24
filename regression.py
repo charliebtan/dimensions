@@ -352,7 +352,7 @@ class BHPAnalysis(BaseModel):
 
     eval_freq: int = 2000
     output_dir: str = "./bhp_experiments"
-    iterations: int = 10000000
+    iterations: int = 100_000
     save_outputs: bool = False
     project_name: str = "ph_dim"
     width: int = 200

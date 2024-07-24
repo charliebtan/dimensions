@@ -30,7 +30,7 @@ class AnalysisOptions(BaseModel):
     All hyperparameters of the experiement are defined here
     """
 
-    iterations: int = 10000000000  # Maximum authorized number of iterations
+    iterations: int = 100_000  # Maximum authorized number of iterations
     log_weights: bool = True  # Whether we want to save final weights of the experiment
     batch_size_eval: int = 5000  # batch size used for evaluation
     #lrmin: float = 0.005  # minimum learning rate in teh experiment
