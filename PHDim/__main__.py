@@ -69,8 +69,6 @@ class AnalysisOptions(BaseModel):
         print('lr_tab', lr_tab)
         print('bs_tab', bs_tab)
 
-        print(self.cat)
-
         for seed in self.seeds:
 
             for k in range(len(lr_tab)):
@@ -78,6 +76,9 @@ class AnalysisOptions(BaseModel):
                 for j in range(len(bs_tab)):
 
                     if self.cat is not None:
+
+                        if self.cat % 2:
+                            self.batch_sizes = reversed(self.batch_sizes)
 
                         n = k * len(bs_tab) + j
 
