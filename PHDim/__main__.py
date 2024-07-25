@@ -62,7 +62,7 @@ class AnalysisOptions(BaseModel):
 
     def __call__(self):
 
-        lr = 1e-1
+        lr = 1e-2
         batch_size = 128
         seed = self.seed
 
