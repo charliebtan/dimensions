@@ -1,5 +1,6 @@
 model_files/*
 *.txt
+*.csv
 
 .vscode/
 build/

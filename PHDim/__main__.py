@@ -46,8 +46,8 @@ class AnalysisOptions(BaseModel):
     width: int = 200  # width of the network (for FCNN)
     optim: str = "SGD"  # Optimizer
     min_points: int = 1000  # minimum number of points used to compute the PH dimension
-    num_exp_lr: int = 6  # Number of batch sizes we use
-    num_exp_bs: int = 6  # Number of learning rates we use
+    # num_exp_lr: int = 6  # Number of batch sizes we use
+    # num_exp_bs: int = 6  # Number of learning rates we use
     compute_dimensions: bool = True  # whether or not we compute the PH dimensions
     project_name: str = "ph_dim"  # project name for WANDB logging
     initial_weights: str = None  # Initial weights if they exist, always none in our work
@@ -58,6 +58,7 @@ class AnalysisOptions(BaseModel):
     jump: int = 20  # number of finite sets drawn to compute the PH dimension, see https://arxiv.org/abs/2111.13171v1
     additional_dimensions: bool = False  # whether or not compute the ph dimensions used in the robustness experiment
     data_proportion: float = 1. # Proportion of data to use (between 0 and 1), used for pytests
+    cat: int = None
 
     def __call__(self):
 
@@ -72,9 +73,16 @@ class AnalysisOptions(BaseModel):
 
         for seed in self.seeds:
 
-            for k in range(min(self.num_exp_lr, len(lr_tab))):
+            for k in range(len(lr_tab)):
 
-                for j in range(min(self.num_exp_bs, len(bs_tab))):
+                for j in range(len(bs_tab)):
+
+                    if self.cat is not None:
+
+                        n = k * len(bs_tab) + j
+
+                        if (n + self.cat) % 4:
+                            continue
 
                     # Initial weights should be stored in
 
