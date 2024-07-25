@@ -79,7 +79,7 @@ class AnalysisOptions(BaseModel):
 
                         n = k * len(bs_tab) + j
 
-                        if (n + self.cat) % 4:
+                        if (n + self.cat) % 2:
                             continue
 
                     # Initial weights should be stored in
