@@ -69,6 +69,8 @@ class AnalysisOptions(BaseModel):
         print('lr_tab', lr_tab)
         print('bs_tab', bs_tab)
 
+        print(self.cat)
+
         for seed in self.seeds:
 
             for k in range(len(lr_tab)):
@@ -79,7 +81,7 @@ class AnalysisOptions(BaseModel):
 
                         n = k * len(bs_tab) + j
 
-                        if (n + self.cat) % 2:
+                        if (n + self.cat) % 8:
                             continue
 
                     # Initial weights should be stored in
