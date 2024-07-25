@@ -82,6 +82,13 @@ class AnalysisOptions(BaseModel):
 
         for width in widths:
 
+            if seed == 0 and width < 40:
+                continue
+            if seed == 1 and width > 16:
+                continue
+            if seed == 2 and width < 44:
+                continue
+
             # Initial weights should be stored in
 
             # Uncomment for wandb logging
