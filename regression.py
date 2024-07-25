@@ -369,7 +369,7 @@ class BHPAnalysis(BaseModel):
     stopping_criterion: float = STOPPING_CRITERION
     ph_period: int = None  # period at which points are taken, if None it will be at the end
     additional_dimensions: bool = False
-    seeds: list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    seeds: list = [0, 1, 2, 3, 4]
     batch_sizes: list = [8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096]
     learning_rates: list = np.logspace(-4, -1, 10, base=10)
 
