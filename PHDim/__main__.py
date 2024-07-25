@@ -66,8 +66,6 @@ class AnalysisOptions(BaseModel):
         lr_tab = self.learning_rates
         bs_tab = self.batch_sizes
 
-        lr_tab = [lr_tab[i] for i in self.lr_index]
-
         print('lr_tab', lr_tab)
         print('bs_tab', bs_tab)
 
