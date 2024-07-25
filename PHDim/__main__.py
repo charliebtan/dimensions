@@ -77,12 +77,9 @@ class AnalysisOptions(BaseModel):
 
                     if self.cat is not None:
 
-                        if self.cat % 2:
-                            self.batch_sizes = reversed(self.batch_sizes)
-
                         n = k * len(bs_tab) + j
 
-                        if (n + self.cat) % 8:
+                        if (n + self.cat) % 12:
                             continue
 
                     # Initial weights should be stored in
