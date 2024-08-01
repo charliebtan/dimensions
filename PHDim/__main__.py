@@ -50,7 +50,7 @@ class AnalysisOptions(BaseModel):
     project_name: str = "ph_dim"  # project name for WANDB logging
     initial_weights: str = None  # Initial weights if they exist, always none in our work
     ripser_points: int = 5000  # Maximum number of points used to compute the PH dimension
-    seeds: list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    seeds: list = [i for i in range(10, 30)]
     jump: int = 20  # number of finite sets drawn to compute the PH dimension, see https://arxiv.org/abs/2111.13171v1
     additional_dimensions: bool = False  # whether or not compute the ph dimensions used in the robustness experiment
     data_proportion: float = 1. # Proportion of data to use (between 0 and 1), used for pytests
@@ -60,7 +60,7 @@ class AnalysisOptions(BaseModel):
 
         for seed in self.seeds:
 
-            for random in [True, False]:
+            for random in [False, True]:
 
                 # Initial weights should be stored in
 

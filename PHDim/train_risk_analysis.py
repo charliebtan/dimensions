@@ -120,6 +120,14 @@ def main(iterations: int = 10000000,
 
     STOP = False  # Do we have enough point for persistent homology
     CONVERGED = False  # has the experiment converged?
+    DIM_NOW = False
+
+    if not random:
+        ph_dim_euclidean = []
+        ph_dim_losses_based = []
+        std_dist = []
+        norm = []
+        mean_step_size = []
 
     # Defining optimizer
     opt = getattr(torch.optim, optim)(
@@ -218,12 +226,19 @@ def main(iterations: int = 10000000,
         torch.cuda.empty_cache()
 
         if (len(weights_history) > ripser_points) and compute_dimensions:
-            STOP = True
+
             weights_history.popleft()
             loss_history.popleft()
 
+            if random:
+                STOP = True
+            else:
+                DIM_NOW = True
+
         # final evaluation and saving results
-        if STOP and CONVERGED:
+        if CONVERGED and (STOP or DIM_NOW):
+            
+            DIM_NOW = False
 
             # if no convergence, we don't record
             if len(weights_history) < ripser_points - 1:
@@ -251,13 +266,13 @@ def main(iterations: int = 10000000,
                 if compute_dimensions:
 
                     logger.info("Computing euclidean PH dim...")
-                    ph_dim_euclidean = fast_ripser(weights_history_np,
+                    ph_dim_euclidean_value = fast_ripser(weights_history_np,
                                                    max_points=ripser_points,
                                                    min_points=min_points,
                                                    point_jump=jump_size)
 
                     logger.info("Computing L1 losses based PH dim...")
-                    ph_dim_losses_based = fast_ripser(loss_history_np,
+                    ph_dim_losses_based_value = fast_ripser(loss_history_np,
                                                       max_points=ripser_points,
                                                       min_points=min_points,
                                                       point_jump=jump_size,
@@ -274,8 +289,8 @@ def main(iterations: int = 10000000,
                     alpha_proj_med_epoch, alpha_proj_max_epoch = estimator_vector_projected(traj_epoch)
 
                     # the std deviation of all points from the centroid
-                    std_dist = torch.sqrt(torch.sum(torch.var(torch.tensor(traj), dim=0))).item()
-                    norm = np.linalg.norm(traj[-1]).item()
+                    std_dist_value = torch.sqrt(torch.sum(torch.var(torch.tensor(traj), dim=0))).item()
+                    norm_value = np.linalg.norm(traj[-1]).item()
 
                     step_sizes = [] # need to start with None as no step size for first point
 
@@ -284,7 +299,24 @@ def main(iterations: int = 10000000,
                         gradient_update = traj[q] - traj[q-1] # difference between points
                         step_sizes.append(torch.norm(gradient_update)) # euclidean distance between points
 
-                    mean_step_size = np.mean(step_sizes)
+                    mean_step_size_value = np.mean(step_sizes)
+
+                    if random:
+                        ph_dim_euclidean = ph_dim_euclidean_value
+                        ph_dim_losses_based = ph_dim_losses_based_value
+                        std_dist = std_dist_value
+                        norm = norm_value
+                        mean_step_size = mean_step_size_value
+
+                    else:
+                        ph_dim_euclidean.append(ph_dim_euclidean_value)
+                        ph_dim_losses_based.append(ph_dim_losses_based_value)
+                        std_dist.append(std_dist_value)
+                        norm.append(norm_value)
+                        mean_step_size.append(mean_step_size_value)
+
+                    weights_history = deque([])
+                    loss_history = deque([])
 
                 else:
                     ph_dim_euclidean = None
@@ -299,36 +331,44 @@ def main(iterations: int = 10000000,
                     norm = None
                     mean_step_size = None
 
-            exp_dict = {
-                "ph_dim_euclidean": ph_dim_euclidean,
-                "ph_dim_losses_based": ph_dim_losses_based,
-                "alpha_full_5000" : alpha_full_5000,
-                "alpha_proj_med_5000": alpha_proj_med_5000,
-                "alpha_proj_max_5000": alpha_proj_max_5000,
-                "alpha_full_epoch": alpha_full_epoch,
-                "alpha_proj_med_epoch": alpha_proj_med_epoch,
-                "alpha_proj_max_epoch": alpha_proj_max_epoch,
-                "std_dist": std_dist,
-                "norm": norm,
-                "step_size": mean_step_size,
-                "train_acc": tr_hist[1],
-                "eval_acc": te_hist[1],
-                "acc_gap": tr_hist[1] - te_hist[1],
-                "train_loss": tr_hist[0],
-                "test_loss": te_hist[0],
-                "loss_gap": te_hist[0] - tr_hist[0],
-                "learning_rate": lr,
-                "batch_size": int(batch_size_train),
-                "LB_ratio": lr / batch_size_train,
-                "depth": depth,
-                "width": width,
-                "model": model,
-                "iterations": i,
-                "seed": seed,
-                "dataset": dataset,
-                "init": 'adv' if random else 'random',
-            }
-            break
+            if random:
+                END = True
+
+            elif len(ph_dim_euclidean) == 5:
+                END = True
+
+            if END:
+
+                exp_dict = {
+                    "ph_dim_euclidean": ph_dim_euclidean,
+                    "ph_dim_losses_based": ph_dim_losses_based,
+                    "alpha_full_5000" : alpha_full_5000,
+                    "alpha_proj_med_5000": alpha_proj_med_5000,
+                    "alpha_proj_max_5000": alpha_proj_max_5000,
+                    "alpha_full_epoch": alpha_full_epoch,
+                    "alpha_proj_med_epoch": alpha_proj_med_epoch,
+                    "alpha_proj_max_epoch": alpha_proj_max_epoch,
+                    "std_dist": std_dist,
+                    "norm": norm,
+                    "step_size": mean_step_size,
+                    "train_acc": tr_hist[1],
+                    "eval_acc": te_hist[1],
+                    "acc_gap": tr_hist[1] - te_hist[1],
+                    "train_loss": tr_hist[0],
+                    "test_loss": te_hist[0],
+                    "loss_gap": te_hist[0] - tr_hist[0],
+                    "learning_rate": lr,
+                    "batch_size": int(batch_size_train),
+                    "LB_ratio": lr / batch_size_train,
+                    "depth": depth,
+                    "width": width,
+                    "model": model,
+                    "iterations": i,
+                    "seed": seed,
+                    "dataset": dataset,
+                    "init": 'adv' if random else 'random',
+                }
+                break
 
         # Saving weights if specified
         if save_weights_file is not None:
