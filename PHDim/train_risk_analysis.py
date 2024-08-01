@@ -121,6 +121,7 @@ def main(iterations: int = 10000000,
     STOP = False  # Do we have enough point for persistent homology
     CONVERGED = False  # has the experiment converged?
     DIM_NOW = False
+    END = False
 
     if not random:
         ph_dim_euclidean = []
