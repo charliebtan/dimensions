@@ -169,8 +169,19 @@ def train_one_model(eval_freq: int = 1000,
     # previous_weights = None
     previous_train_loss = None
     CONVERGED = False
+    DIM_NOW = False
     exp_results = {}
     avg_train_loss = 0.
+
+    ph_dim_euclidean = []
+    ph_dim_losses_based = []
+    ph_dim_eval_based = []
+    std_dist = []
+    norm = []
+    mean_step_size = []
+    loss_train = []
+    loss_eval = []
+    loss_gap = []
 
     logger.info("Starting training")
     for i, (x, y) in enumerate(cycle_dataloader):
@@ -231,7 +242,7 @@ def train_one_model(eval_freq: int = 1000,
                 eval_history.append(features)
 
             if len(weights_history) >= ripser_points:
-                STOP = True
+                DIM_NOW = True
                 if ph_period is not None:
                     weights_history.popleft()
                     outputs_history.popleft()
@@ -245,7 +256,9 @@ def train_one_model(eval_freq: int = 1000,
             # logger.info(f"Saving last weights in {str(save_weights_file)}")
             torch.save(net.state_dict(), str(save_weights_file))
 
-        if STOP and CONVERGED:
+        if DIM_NOW and CONVERGED:
+
+            DIM_NOW = False
 
             with torch.no_grad():
 
@@ -253,11 +266,15 @@ def train_one_model(eval_freq: int = 1000,
                     logger.warning("Experiment did not converge")
                     break
 
-                loss_eval, _ = eval_bhp(test_set, test_targets, net, obj)
+                loss_eval_value, _ = eval_bhp(test_set, test_targets, net, obj)
                 eval_hist.append(loss_eval)
 
-                loss_train, _ = eval_bhp(training_set, training_targets, net, obj)
+                loss_train_value, _ = eval_bhp(training_set, training_targets, net, obj)
                 risk_hist.append([i, loss_train])
+
+                loss_train.append(loss_train_value)
+                loss_eval.append(loss_eval_value)
+                loss_gap.append(loss_train_value - loss_eval_value)
 
                 logger.info(f"Final sqrt(losses): train: {round(np.sqrt(loss_train), 2)}, eval: {round(np.sqrt(loss_eval), 2)}")
 
@@ -270,13 +287,13 @@ def train_one_model(eval_freq: int = 1000,
                 jump_size = int((ripser_points - min_points) / jump)
 
                 logger.info("Computing euclidean PH dim...")
-                ph_dim_euclidean = fast_ripser(weights_history_np,
+                ph_dim_euclidean_value = fast_ripser(weights_history_np,
                                                max_points=ripser_points,
                                                min_points=min_points,
                                                point_jump=jump_size)
 
                 logger.info("Computing PH dim in output space...")
-                ph_dim_losses_based = fast_ripser(outputs_history_np,
+                ph_dim_losses_based_value = fast_ripser(outputs_history_np,
                                                   max_points=ripser_points,
                                                   min_points=min_points,
                                                   point_jump=jump_size,
@@ -285,7 +302,7 @@ def train_one_model(eval_freq: int = 1000,
                 logger.debug(f"outputs shape: {outputs_history_np.shape}")
 
                 logger.info("Computing PH dim in eval space...")
-                ph_dim_eval_based = fast_ripser(eval_history_np,
+                ph_dim_eval_based_value = fast_ripser(eval_history_np,
                                                 max_points=ripser_points,
                                                 min_points=min_points,
                                                 point_jump=jump_size)
@@ -303,8 +320,8 @@ def train_one_model(eval_freq: int = 1000,
                 alpha_proj_med_epoch, alpha_proj_max_epoch = estimator_vector_projected(traj_epoch)
 
                 # the std deviation of all points from the centroid
-                std_dist = torch.sqrt(torch.sum(torch.var(torch.tensor(traj), dim=0))).item()
-                norm = np.linalg.norm(traj[-1]).item()
+                std_dist_value = torch.sqrt(torch.sum(torch.var(torch.tensor(traj), dim=0))).item()
+                norm_value = np.linalg.norm(traj[-1]).item()
 
                 step_sizes = [] # need to start with None as no step size for first point
 
@@ -313,7 +330,21 @@ def train_one_model(eval_freq: int = 1000,
                     gradient_update = traj[q] - traj[q-1] # difference between points
                     step_sizes.append(torch.norm(gradient_update)) # euclidean distance between points
 
-                mean_step_size = np.mean(step_sizes)
+                mean_step_size_value = np.mean(step_sizes)
+
+                ph_dim_euclidean.append(ph_dim_euclidean_value)
+                ph_dim_losses_based.append(ph_dim_losses_based_value)
+                ph_dim_eval_based.append(ph_dim_eval_based_value)
+                std_dist.append(std_dist_value)
+                norm.append(norm_value)
+                mean_step_size.append(mean_step_size_value)
+
+                weights_history = deque([])
+                batch_risk_history = deque([])
+                outputs_history = deque([])
+                eval_history = deque([])
+
+            if len(ph_dim_euclidean) == 3:
 
                 exp_dict = {
                     "ph_dim_euclidean": ph_dim_euclidean,
@@ -330,7 +361,7 @@ def train_one_model(eval_freq: int = 1000,
                     "step_size": mean_step_size,
                     "train_loss": loss_train,
                     "test_loss": loss_eval,
-                    "loss_gap": loss_train - loss_eval,
+                    "loss_gap": loss_gap,
                     "learning_rate": lr,
                     "batch_size": int(batch_size),
                     "LB_ratio": lr / batch_size,
@@ -341,8 +372,7 @@ def train_one_model(eval_freq: int = 1000,
                     "seed": seed,
                     "dataset": dataset_name,
                 }
-
-            break
+                break
 
     return exp_dict
 
@@ -361,51 +391,47 @@ class BHPAnalysis(BaseModel):
     min_points: int = 1000
     dataset: str = "california"
     model: str = "fcnn"
-    bs_min: int = 32
-    bs_max: int = 200
-    lr_min: float = 1e-3
-    lr_max: float = 1e-2
+    # bs_min: int = 32
+    # bs_max: int = 200
+    # lr_min: float = 1e-3
+    # lr_max: float = 1e-2
     stopping_criterion: float = STOPPING_CRITERION
     ph_period: int = None  # period at which points are taken, if None it will be at the end
     additional_dimensions: bool = False
-    seeds: list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    seeds: list = [i for i in range(10, 30)]
 
     def __call__(self):
 
-        lr_tab = np.exp(np.linspace(np.log(self.lr_min), np.log(self.lr_max), 6))
-        bs_tab = np.linspace(self.bs_min, self.bs_max, 6, dtype=np.int64)
+        lr = 1e-2
+        bs = 128
 
         for seed in self.seeds:
 
-            for k in range(len(lr_tab)):
-                for b in range(len(bs_tab)):
+            reset_wandb_env()
+            wandb.init(project=self.project_name, entity='ctan',
+                       config=self.dict()
+            )
 
-                    reset_wandb_env()
-                    wandb.init(project=self.project_name, entity='ctan',
-                               config=self.dict()
-                    )
+            exp_dict = train_one_model(self.eval_freq,
+                                       lr,
+                                       self.iterations,
+                                       self.width,
+                                       self.depth,
+                                       bs,
+                                       self.ripser_points,
+                                       self.jump,
+                                       self.min_points,
+                                       self.dataset,
+                                       self.model,
+                                       self.stopping_criterion,
+                                       self.ph_period,
+                                       self.additional_dimensions,
+                                       f'{self.model}_{self.depth}_{self.dataset}_{lr}_{bs}_{seed}.pth',
+                                       seed=seed,
+                                       )
 
-
-                    exp_dict = train_one_model(self.eval_freq,
-                                               lr_tab[k],
-                                               self.iterations,
-                                               self.width,
-                                               self.depth,
-                                               int(bs_tab[b]),
-                                               self.ripser_points,
-                                               self.jump,
-                                               self.min_points,
-                                               self.dataset,
-                                               self.model,
-                                               self.stopping_criterion,
-                                               self.ph_period,
-                                               self.additional_dimensions,
-                                               f'{self.model}_{self.depth}_{self.dataset}_{lr_tab[k]}_{bs_tab[b]}_{seed}.pth',
-                                               seed=seed,
-                                               )
-
-                    wandb.log(exp_dict)
-                    wandb.finish()
+            wandb.log(exp_dict)
+            wandb.finish()
 
 if __name__ == "__main__":
     fire.Fire(BHPAnalysis)
