@@ -179,9 +179,9 @@ def train_one_model(eval_freq: int = 1000,
     std_dist = []
     norm = []
     mean_step_size = []
-    loss_train = []
-    loss_eval = []
-    loss_gap = []
+    loss_trains = []
+    loss_evals = []
+    loss_gaps = []
 
     logger.info("Starting training")
     for i, (x, y) in enumerate(cycle_dataloader):
@@ -272,9 +272,9 @@ def train_one_model(eval_freq: int = 1000,
                 loss_train_value, _ = eval_bhp(training_set, training_targets, net, obj)
                 risk_hist.append([i, loss_train])
 
-                loss_train.append(loss_train_value)
-                loss_eval.append(loss_eval_value)
-                loss_gap.append(loss_train_value - loss_eval_value)
+                loss_trains.append(loss_train_value)
+                loss_evals.append(loss_eval_value)
+                loss_gaps.append(loss_train_value - loss_eval_value)
 
                 logger.info(f"Final sqrt(losses): train: {round(np.sqrt(loss_train), 2)}, eval: {round(np.sqrt(loss_eval), 2)}")
 
@@ -359,9 +359,9 @@ def train_one_model(eval_freq: int = 1000,
                     "std_dist": std_dist,
                     "norm": norm,
                     "step_size": mean_step_size,
-                    "train_loss": loss_train,
-                    "test_loss": loss_eval,
-                    "loss_gap": loss_gap,
+                    "train_loss": loss_trains,
+                    "test_loss": loss_evals,
+                    "loss_gap": loss_gaps,
                     "learning_rate": lr,
                     "batch_size": int(batch_size),
                     "LB_ratio": lr / batch_size,
