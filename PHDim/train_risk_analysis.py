@@ -129,6 +129,12 @@ def main(iterations: int = 10000000,
         std_dist = []
         norm = []
         mean_step_size = []
+        tr_acc = []
+        te_acc = []
+        acc_gap = []
+        tr_loss = []
+        te_loss = []
+        loss_gap = []
 
     # Defining optimizer
     opt = getattr(torch.optim, optim)(
@@ -260,6 +266,23 @@ def main(iterations: int = 10000000,
                 te_hist, *_ = eval(test_loader_eval, net, crit_unreduced, opt)
                 tr_hist, *_ = eval(train_loader_eval, net, crit_unreduced, opt)
 
+                if random:
+                    tr_acc = tr_hist[1]
+                    te_acc = te_hist[1]
+                    acc_gap = tr_acc - te_acc
+
+                    tr_loss = tr_hist[0]
+                    te_loss = te_hist[0]
+                    loss_gap = te_loss - tr_loss
+                else:
+                    tr_acc.append(tr_hist[1])
+                    te_acc.append(te_hist[1])
+                    acc_gap.append(tr_hist[1] - te_hist[1])
+
+                    tr_loss.append(tr_hist[0])
+                    te_loss.append(te_hist[0])
+                    loss_gap.append(te_hist[0] - tr_hist[0])
+
                 # Turn collected iterates (both weights and losses) into numpy arrays
                 if compute_dimensions:
                     weights_history_np = np.stack(tuple(weights_history))
@@ -359,12 +382,12 @@ def main(iterations: int = 10000000,
                     "std_dist": std_dist,
                     "norm": norm,
                     "step_size": mean_step_size,
-                    "train_acc": tr_hist[1],
-                    "eval_acc": te_hist[1],
-                    "acc_gap": tr_hist[1] - te_hist[1],
-                    "train_loss": tr_hist[0],
-                    "test_loss": te_hist[0],
-                    "loss_gap": te_hist[0] - tr_hist[0],
+                    "train_acc": tr_acc,
+                    "eval_acc": te_acc,
+                    "acc_gap": acc_gap,
+                    "train_loss": tr_loss,
+                    "test_loss": te_loss,
+                    "loss_gap": loss_gap,
                     "learning_rate": lr,
                     "batch_size": int(batch_size_train),
                     "LB_ratio": lr / batch_size_train,
