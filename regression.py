@@ -207,6 +207,18 @@ def train_one_model(eval_freq: int = 1000,
 
         if torch.isnan(loss):
             logger.error('Loss has gone nan ❌')
+            exp_dict = {
+                "learning_rate": lr,
+                "batch_size": int(batch_size),
+                "LB_ratio": lr / batch_size,
+                "depth": depth,
+                "width": width,
+                "model": model,
+                "iterations": i,
+                "seed": seed,
+                "dataset": dataset_name,
+                "nan": True,
+                }
             break
 
         # calculate the gradients
