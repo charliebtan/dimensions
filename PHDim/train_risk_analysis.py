@@ -342,7 +342,7 @@ def main(iterations: int = 10000000,
             if random:
                 END = True
 
-            elif len(ph_dim_euclidean) == 5:
+            elif len(ph_dim_euclidean) == 3:
                 END = True
 
             if END:
