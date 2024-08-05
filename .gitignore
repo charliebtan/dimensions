@@ -2,6 +2,7 @@ model_files/*
 *.txt
 *.csv
 *.pth
+*.zip
 meta_data/*
 
 .vscode/
