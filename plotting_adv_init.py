@@ -1,14 +1,10 @@
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
 
 markers_dict = {
     'random': 'o',  # Circle
     'adv': 's',  # Square
-}
-
-colour_dict = {
-    'random': (68/255, 1/255, 84/255),
-    'adv': (53/255, 183/255, 120/255)
 }
 
 def plot_acc(df, title, measure, cutoff_acc, ax):
@@ -22,7 +18,23 @@ def plot_acc(df, title, measure, cutoff_acc, ax):
 
     for init in markers_dict.keys():
         idx = df['init'] == init
-        ax.scatter(x[idx], y[idx], marker=markers_dict[init], label=init) #, c=colour_dict[init])
+        ax.scatter(x[idx], y[idx], marker=markers_dict[init], label=init)
+
+        # remove the code for adding the stds - not sure it was formally correc
+
+        # mean_x = x[idx].mean()
+        # mean_y = y[idx].mean()
+
+        # std_x = 3 * x[idx].std()
+        # std_y = 3 * y[idx].std()
+
+        # theta = np.linspace(0, 2*np.pi, 100)
+        # a = std_x
+        # b = std_y
+        # ellipse_x = mean_x + a * np.cos(theta)
+        # ellipse_y = mean_y + b * np.sin(theta)
+
+        # ax.fill(ellipse_x, ellipse_y, alpha=0.3)
 
     ax.set_xlabel('Accuracy Gap')
     ax.set_ylabel(measure.replace('_', ' '))
