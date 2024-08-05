@@ -3,17 +3,19 @@ import numpy as np
 import pandas as pd
 
 # Specify the file path
-file_path = 'data_old/fcn_california.csv'
-
-learning_rates = np.exp(np.linspace(np.log(1e-3), np.log(1e-2), 6))
-# batch_sizes = [32, 76, 121, 166, 211, 256]
-batch_sizes = [32, 65, 99, 132, 166, 200]
-model = 'fcn5_cali'
+file_path = 'data_old/alexnet_cifar10_6x6.csv'
+model = f"{file_path.split('/')[-1].split('.')[0]}"
 
 # Load the CSV file into a pandas DataFrame
 df = pd.read_csv(file_path)
 
-df = df[df['depth'] == 5]
+# df = df[df['depth'] == 5]
+
+learning_rates = np.exp(np.linspace(np.log(5e-3), np.log(1e-1), 6))
+batch_sizes = [32, 76, 121, 166, 211, 256]
+
+# learning_rates = np.exp(np.linspace(np.log(1e-3), np.log(1e-2), 6))
+# batch_sizes = [32, 65, 99, 132, 166, 200]
 
 df.sort_values(by=['batch_size', 'learning_rate', 'seed'], inplace=True)
 df.to_csv(f'{model}_filtered.csv', index=False)
@@ -34,7 +36,7 @@ for learning_rate in learning_rates:
 
         count_data.append({'batch_size': batch_size, 'learning_rate': learning_rate, 'count': len(bs_df), **seed_counts})
 
-        seeds = [i for i in range(10)]
+        seeds = [i for i in range(1)]
 
         for seed in seeds:
             if seed in seed_counts.keys():

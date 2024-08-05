@@ -68,19 +68,20 @@ def plot_reg(df, title, measure):
     plt.title(title)
     plt.show()
 
-for measure in ['ph_dim_euclidean', 'ph_dim_losses_based']:
+# for measure in ['ph_dim_euclidean', 'ph_dim_losses_based']:
+# 
+#     df = pd.read_csv('data_final/fcnn_chd_10x10.csv')
+#     plot_reg(df, title='fcnn chd', measure=measure) 
 
-    df = pd.read_csv('data_final/fcnn_chd_10x10.csv')
-    plot_reg(df, title='fcnn chd', measure=measure) 
+# for measure in ['ph_dim_euclidean', 'ph_dim_losses_based']:
+# 
+#     df = pd.read_csv('data_final/alexnet_cifar10_10x10.csv')
+#     df = df[df['ph_dim_losses_based'] < 20] 
+#     plot_acc(df, 'alexnet cifar10', measure=measure, cutoff_acc=99) 
 
-for measure in ['ph_dim_euclidean', 'ph_dim_losses_based']:
-
-    df = pd.read_csv('data_final/alexnet_cifar10_10x10.csv')
-    plot_acc(df, 'alexnet cifar10', measure=measure, cutoff_acc=97)    
-
-for measure in ['ph_dim_euclidean', 'ph_dim_losses_based']:
+for measure in ['norm', 'ph_dim_losses_based']:
 
     df = pd.read_csv('data_final/fc_mnist_10x10.csv')
-    plot_acc(df, 'fc minst', measure=measure, cutoff_acc=97)
+    plot_acc(df, 'fc minst', measure=measure, cutoff_acc=99)
 
 plt.show()
