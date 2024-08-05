@@ -53,11 +53,11 @@ class AnalysisOptions(BaseModel):
     initial_weights: str = None  # Initial weights if they exist, always none in our work
     ripser_points: int = 5000  # Maximum number of points used to compute the PH dimension
     #batch_sizes: list = [8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096]
-    seed: int = 0
+    seed: int = 2
     jump: int = 20  # number of finite sets drawn to compute the PH dimension, see https://arxiv.org/abs/2111.13171v1
     additional_dimensions: bool = False  # whether or not compute the ph dimensions used in the robustness experiment
     data_proportion: float = 1. # Proportion of data to use (between 0 and 1), used for pytests
-    widths: list = [2,4,6,8,10,12,14,16,18,20,22,24,28,32,40,48,56,64]  # Widths of the CNN
+    widths: list = [48]  # Widths of the CNN
     cat: int = 0
 
     def __call__(self):
@@ -68,26 +68,7 @@ class AnalysisOptions(BaseModel):
 
         cat = self.cat
 
-        if cat == 0:
-            widths = [2,10,18,26,36,52]
-        elif cat == 1:
-            widths = [4,12,20,28,40,56]
-        elif cat == 2:
-            widths = [6,14,22,30,44,60]
-        elif cat == 3:
-            widths = [8,16,24,32,48,64]
-
-        if seed == 1:
-            widths = reversed(widths)
-
-        for width in widths:
-
-            if seed == 0 and width < 40:
-                continue
-            if seed == 1 and width > 16:
-                continue
-            if seed == 2 and width < 44:
-                continue
+        for width in self.widths:
 
             # Initial weights should be stored in
 
