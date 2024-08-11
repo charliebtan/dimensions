@@ -33,10 +33,10 @@ class AnalysisOptions(BaseModel):
     iterations: int = 10000000000  # Maximum authorized number of iterations
     log_weights: bool = True  # Whether we want to save final weights of the experiment
     batch_size_eval: int = 5000  # batch size used for evaluation
-    #lrmin: float = 0.005  # minimum learning rate in teh experiment
-    #lrmax: float = 0.1  # maximum learning rate in the experiment
-    #bs_min: int = 32  # minimum batch size in the experiment
-    #bs_max: int = 256  # maximum batch sie in the experiment
+    lrmin: float = 0.005  # minimum learning rate in teh experiment
+    lrmax: float = 0.1  # maximum learning rate in the experiment
+    bs_min: int = 32  # minimum batch size in the experiment
+    bs_max: int = 256  # maximum batch sie in the experiment
     eval_freq: int = 10000  # at which frequency we evaluate the model (training and validation sets)
     dataset: str = "cifar10"  # dataset we use
     data_path: str = "~/data/"  # where to find the data
@@ -52,7 +52,7 @@ class AnalysisOptions(BaseModel):
     project_name: str = "ph_dim"  # project name for WANDB logging
     initial_weights: str = None  # Initial weights if they exist, always none in our work
     ripser_points: int = 5000  # Maximum number of points used to compute the PH dimension
-    batch_sizes: list = [8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096]
+    # batch_sizes: list = [8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096]
     seeds: list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     jump: int = 20  # number of finite sets drawn to compute the PH dimension, see https://arxiv.org/abs/2111.13171v1
     additional_dimensions: bool = False  # whether or not compute the ph dimensions used in the robustness experiment
@@ -61,8 +61,12 @@ class AnalysisOptions(BaseModel):
     def __call__(self):
 
         # Defining the grid of hyperparameters
-        lr_tab = np.logspace(-4, -1, 10, base=10)
-        bs_tab = self.batch_sizes
+        # lr_tab = np.logspace(-4, -1, 10, base=10)
+        # bs_tab = self.batch_sizes
+
+        lr_tab = np.exp(np.linspace(np.log(self.lrmin), np.log(self.lrmax), self.num_exp_lr))
+        bs_tab = np.linspace(self.bs_min, self.bs_max, self.num_exp_bs, dtype=np.int64)
+
 
         print('lr_tab', lr_tab)
         print('bs_tab', bs_tab)
