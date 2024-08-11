@@ -1,5 +1,9 @@
 model_files/*
 *.txt
+*.csv
+*.out
+*.zip
+*.pth
 
 .vscode/
 build/
