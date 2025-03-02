@@ -15,6 +15,43 @@ from topology import fast_ripser
 from utils import accuracy
 from dataset import prepare_data, cycle_loader
 
+
+def build_model(model_name, dataset_name, cnn_width=None):
+
+    model_name = model_name.lower()
+    dataset_name = dataset_name.lower()
+
+    # Initstantiate the model
+    if model_name not in ["fc5", "fc7", "alexnet", "cnn"]:
+        raise NotImplementedError(f"Model {model_name} not implemented, should be in ['fc5', 'fc7', 'alexnet', 'cnn']")
+
+    if dataset_name == "mnist":
+        input_shape = (1, 28, 28)
+        output_dim = 10
+    elif dataset_name == "cifar10":
+        input_shape = (3, 32, 32)
+        output_dim = 10
+    elif dataset_name == "cifar100":
+        input_shape = (3, 32, 32)
+        output_dim = 100
+    else:
+        raise NotImplementedError(f"Dataset {dataset_name} not implemented, should be in ['mnist', 'cifar10', 'cifar100']")
+
+    net_factory = getattr(models, model_name)
+
+    if model_name == "cnn" and cnn_width is not None:
+        net = net_factory(input_shape, output_dim, cnn_width)
+    else:
+        net = net_factory(input_shape, output_dim)
+
+    logger.info("Network:")
+    logger.info(net)
+
+    return net
+
+
+
+
 def get_weights(net):
     return torch.cat([p.view(-1).detach().cpu() for p in net.parameters()]).numpy()
 
@@ -119,13 +156,8 @@ def main():
    # Prepare the data
     train_loader, train_loader_eval, test_loader_eval = prepare_data(args.dataset, args.data_path, args.batch_size, args.batch_size_eval)
 
-    # Initstantiate the model
-    if args.model.lower() not in ["fc5", "fc7", "alexnet", "cnn"]:
-        raise NotImplementedError(f"Model {args.model} not implemented, should be in ['fc5', 'fc7', 'alexnet', 'cnn']")
-    net_factory = getattr(models, args.model.lower() + "_" + args.dataset.lower())
-    net = net_factory().to(device)
-    logger.info("Network:")
-    logger.info(net)
+    # Build the model
+    net = build_model(args.model, args.dataset).to(device)
 
     # Define the loss function
     criterion = nn.CrossEntropyLoss(reduction="none").to(device)
@@ -247,7 +279,6 @@ def main():
 
     wandb.log(exp_dict)
     wandb.finish()
-
 
 if __name__ == "__main__":
     main()

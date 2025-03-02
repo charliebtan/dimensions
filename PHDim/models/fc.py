@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 
 class MLP(nn.Module):
@@ -26,17 +27,10 @@ class MLP(nn.Module):
         x = self.mlp(x)
         return x
 
-def fc5_mnist():
-    input_dim = 28 * 28
-    output_dim = 10
+def fc5(input_shape, output_dim):
+    input_dim = torch.prod(torch.tensor(input_shape))
     return MLP(input_dim, output_dim, depth=5)
 
-def fc7_mnist(): 
-    input_dim = 28 * 28
-    output_dim = 10
+def fc7(input_shape, output_dim):
+    input_dim = torch.prod(torch.tensor(input_shape))
     return MLP(input_dim, output_dim, depth=7)
-
-def fc5_california():
-    input_dim = 13
-    output_dim = 1
-    return MLP(input_dim, output_dim, depth=5)

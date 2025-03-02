@@ -4,41 +4,37 @@ import torch.nn as nn
 
 class AlexNet(nn.Module):
 
-    def __init__(self, input_height=32, input_width=32, input_channels=3, ch=64, num_classes=1000):
-        # ch is the scale factor for number of channels
-        super(AlexNet, self).__init__()
+    def __init__(self, input_height=32, input_width=32, input_channels=3, channels=64, num_classes=100):
+        super().__init__()
 
         self.input_height = input_height
         self.input_width = input_width
         self.input_channels = input_channels
 
         self.features = nn.Sequential(
-            nn.Conv2d(self.input_channels, out_channels=ch, kernel_size=4, stride=2, padding=2),
+            nn.Conv2d(self.input_channels, out_channels=channels, kernel_size=4, stride=2, padding=2),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=3, stride=2),
-            nn.Conv2d(ch, ch, kernel_size=5, padding=2),
+            nn.Conv2d(channels, channels, kernel_size=5, padding=2),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=3, stride=2),
-            nn.Conv2d(ch, ch, kernel_size=3, padding=1),
+            nn.Conv2d(channels, channels, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(ch, ch, kernel_size=3, padding=1),
+            nn.Conv2d(channels, channels, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(ch, ch, kernel_size=3, padding=1),
+            nn.Conv2d(channels, channels, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=3, stride=2),
         )
 
-        self.size = self.get_size()
+        self.size = self.get_size() # compute linear layer input size
         a = torch.tensor(self.size).float()
         b = torch.tensor(2).float()
         self.width = int(a) * int(1 + torch.log(a) / torch.log(b))
 
-        # Note: we removed the dropout to get a setting similar to other experiments
         self.classifier = nn.Sequential(
-            # nn.Dropout(),
             nn.Linear(self.size, self.width),
             nn.ReLU(inplace=True),
-            # nn.Dropout(),
             nn.Linear(self.width, self.width),
             nn.ReLU(inplace=True),
             nn.Linear(self.width, num_classes),
@@ -56,12 +52,5 @@ class AlexNet(nn.Module):
         x = self.classifier(x)
         return x
 
-    def parameters_number(self):
-        res = 0
-        for p in self.parameters():
-            p += p.flatten().shape[0]
-        return res
-
-
-def alexnet(**kwargs):
-    return AlexNet(**kwargs)
+def alexnet(input_shape, output_dim):
+    return AlexNet(input_height=input_shape[1], input_width=input_shape[2], input_channels=input_shape[0], num_classes=output_dim)
