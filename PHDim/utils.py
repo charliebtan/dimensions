@@ -11,4 +11,4 @@ from torchvision import datasets, transforms
 def accuracy(out, y):
     _, pred = out.max(1)
     correct = pred.eq(y)
-    return 100 * correct.sum().float() / y.size(0)
+    return 100 * correct.sum().float()
