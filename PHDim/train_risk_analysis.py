@@ -16,20 +16,148 @@ from PHDim.eval import eval, recover_eval_tensors, eval_on_tensors
 
 from PHDim.hausdorff_alpha import estimator_vector_full, estimator_vector_projected
 
-
-class UnknownWeightFormatError(BaseException):
-    ...
-
-
 def get_weights(net):
-    with torch.no_grad():
-        w = []
+    return torch.cat([p.view(-1).detach().cpu() for p in net.parameters()]).numpy()
 
-        # TODO: improve this?
-        for p in net.parameters():
-            w.append(p.view(-1).detach().to(torch.device('cpu')))
-        return torch.cat(w).cpu().numpy()
+from utils import accuracy
 
+
+@torch.no_grad()
+def get_dataloader_as_tensors(dataloader):
+
+    all_x, all_y = [], []
+
+    for x, y in dataloader:
+
+        all_x.append(x)
+        all_y.append(y)
+
+    return torch.cat(all_x), torch.cat(all_y)
+
+
+@torch.no_grad()
+def evaluate(net, criterion, x, y, batch_size=None):
+
+    if batch_size is None:
+        batch_size = x.shape[0]
+
+    for i in range(0, x.shape[0], batch_size):
+
+        x_batch = x[i : i + batch_size]
+        y_batch = y[i : i + batch_size]
+
+        out = net(x_batch)
+        loss = criterion(out, y_batch)
+        acc = accuracy(out, y_batch)
+
+        if i == 0:
+            total_loss = loss
+            total_acc = acc
+        else:
+            total_loss += loss * x_batch.shape[0]
+            total_acc += acc * x_batch.shape[0]
+
+    return total_loss / x.shape[0], total_acc / x.shape[0]
+
+def train_step(net, x, y, opt):
+
+    net.train()
+    x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
+    opt.zero_grad()
+    out = net(x)
+    loss = crit(out, y)
+    loss.backward()
+    opt.step()
+
+    return loss
+
+def adversarial_pretrain(net, opt, criterion, train_loader):
+
+    logger.info("Starting adversarial pretraining")
+
+    train_loader_random = None
+    cycle_train_loader_random = cycle_loader(train_loader_random)
+    x_random, y_random = get_dataloader_as_tensors(train_loader_random)
+
+    x_random, y_random = x_random.to(device), y_random.to(device)
+
+    for i, (x, y) in enumerate(cycle_train_loader_random):
+
+        train_step(net, x, y, opt)
+
+        if i % 1000 == 0:
+
+            # we don't use the loss from training, but re-compute it for fixed parameters
+
+            loss, acc = evaluate(net, criterion, x_random, y_random)
+            logger.info(f"Iteration: {i}, Loss: {loss}, Acc: {acc}")
+
+            if int(acc) == 100:
+                logger.ingo(f'All random training data is correctly classified in {i} iterations! ✅')
+                break 
+
+def train():
+
+    for i, (x, y) in enumerate(circ_train_loader):
+
+        if i % eval_freq == 0 and (not CONVERGED):
+
+            logger.info(f"Evaluation at iteration {i}")
+
+            # Evaluation on full training set
+            train_loss, train_acc = evaluate(net, criterion, train_x, train_y)
+            logger.info(f"Training accuracy at iteration {i}: {round(train_acc, 3)}%")
+
+            # Evaluation on full test set
+            test_loss, test_acc = evaluate(net, criterion, test_x, test_y)
+            logger.info(f"Evaluation on test set at iteration {i} finished ✅, accuracy: {round(test_acc, 3)}")
+
+            # Stop when reach 100% training accuracy
+            if (int(train_acc) == 100):
+                logger.info(f'All training data is correctly classified in {i} iterations! ✅')
+                CONVERGED = True
+
+            logger.info(f"Loss sum at iteration{i}: {losses.sum().item()}")
+
+        loss = train_step(net, x, y, opt)
+
+        if i % 1000 == 0:
+            logger.info(f"Loss at iteration {i}: {loss.item()}")
+
+        if torch.isnan(loss):
+            logger.error('Loss has gone nan ❌')
+            break
+
+        if i > iterations:
+            CONVERGED = True
+
+        if CONVERGED:
+
+            weights_tensor.append(get_weights(net))
+
+            # TODO do I need all of this??
+
+            if not model == 'cnn':
+                tr_hist, losses, _ = eval_on_tensors(eval_x, eval_y, net, crit_unreduced)
+            else:
+                tr_hist, losses, _ = eval(train_loader_eval, net, crit_unreduced, opt)
+            loss_history.append(losses.cpu())
+
+            # Validation history
+            if not model == 'cnn':
+                te_hist, _, _ = eval_on_tensors(test_x, test_y, net, crit_unreduced)
+            else:
+                te_hist, _, _ = eval(test_loader_eval, net, crit_unreduced, opt)
+
+        else:
+            if tr_hist[1] < 15 and i > 1000000:
+                logger.error('Training accuracy is below 20% - not converging ❌')
+                break
+
+        # clear cache
+        torch.cuda.empty_cache()
+
+ 
 
 def main(iterations: int = 10000000,
          batch_size_train: int = 100,
@@ -45,20 +173,12 @@ def main(iterations: int = 10000000,
          min_points: int = 200,
          seed: int = 42,
          save_weights_file: str = None,
-         compute_dimensions: bool = True,
          ripser_points: int = 1000,
          jump: int = 20,
          random: bool = False,
          ):
 
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-
-    logger.info(f"on device {str(device)}")
-    logger.info(f"Random seed ('torch.manual_seed'): {seed}")
-    torch.manual_seed(seed)
-    torch.set_float32_matmul_precision('high')
-
-    # training setup
+   # training setup
     if dataset not in ["mnist", "cifar10"]:
         raise NotImplementedError(f"Dataset {dataset} not implemented, should be in ['mnist', 'cifar10']")
     train_loader, test_loader_eval, train_loader_eval, num_classes, train_loader_random, train_loader_random_eval = get_data_simple(dataset,
@@ -91,13 +211,19 @@ def main(iterations: int = 10000000,
         else:
             net = lenet().to(device)
 
-    logger.info("Network: ")
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
+    logger.info(f"On device: {str(device)}")
+    logger.info(f"Random seed: {seed}")
+    torch.manual_seed(seed)
+    torch.set_float32_matmul_precision('high')
+
+    logger.info("Network:")
     print(net)
 
     net = net.to(device)
 
-    crit = nn.CrossEntropyLoss().to(device)
-    crit_unreduced = nn.CrossEntropyLoss(reduction="none").to(device)
+    criterion = nn.CrossEntropyLoss().to(device)
 
     def cycle_loader(dataloader):
         while 1:
@@ -105,9 +231,10 @@ def main(iterations: int = 10000000,
                 yield data
 
     circ_train_loader = cycle_loader(train_loader)
-    circ_train_loader_random = cycle_loader(train_loader_random)
+
 
     # Recovering evaluation tensors (made to speed up the experiment)
+
     eval_x, eval_y = recover_eval_tensors(train_loader_eval)
     test_x, test_y = recover_eval_tensors(test_loader_eval)
 
@@ -115,7 +242,7 @@ def main(iterations: int = 10000000,
     exp_dict = {}
 
     # weights
-    weights_history = deque([])
+    weights_tensor = deque([])
     loss_history = deque([])
 
     STOP = False  # Do we have enough point for persistent homology
@@ -142,269 +269,71 @@ def main(iterations: int = 10000000,
         lr=lr,
     )
 
-    if random:
 
-        for i, (x, y) in enumerate(circ_train_loader_random):
-
-            net.train()
-            x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
-            opt.zero_grad()
-            out = net(x)
-            loss = crit(out, y)
-            loss.backward()
-            opt.step()
-
-            if i % 1000 == 0:
-                rand_hist, _, _ = eval(train_loader_random_eval, net, crit_unreduced, opt)
-                loss, acc = rand_hist
-                print(i, loss, acc, flush=True)
-                if int(acc) == 100:
-                    print(f'All random training data is correctly classified in {i} iterations! ✅')
-                    torch.save(net.state_dict(), 'adv_'+ str(save_weights_file))
-                    break   
-        
-
+ 
+    if adversarial_init:
+        adversarial_pretrain()
+       
     logger.info("Starting training")
-    for i, (x, y) in enumerate(circ_train_loader):
 
-        # Sequentially running evaluation step
-        # first record is at the initial point
-        if i % eval_freq == 0 and (not CONVERGED):
+    train()
 
-            with torch.no_grad():
 
-                # Evaluation on validation set
-                logger.info(f"Evaluation at iteration {i}")
-                te_hist, *_ = eval(test_loader_eval, net, crit_unreduced, opt)
-                logger.info(f"Evaluation on test set at iteration {i} finished ✅, accuracy: {round(te_hist[1], 3)}")
 
-                # Evaluation on training set
-                tr_hist, losses, _ = eval(train_loader_eval, net, crit_unreduced, opt)
-                logger.info(f"Training accuracy at iteration {i}: {round(tr_hist[1], 3)}%")
+        if (len(weights_tensor) == ripser_points):
 
-                # Stopping criterion based on 100% accuracy
-                if (int(tr_hist[1]) == 100) and (CONVERGED is False):
-                    logger.info(f'All training data is correctly classified in {i} iterations! ✅')
-                    CONVERGED = True
+            # Evaluation on full training set
+            train_loss, train_acc = evaluate(net, criterion, train_x, train_y)
 
-                logger.info(f"Loss sum at iteration{i}: {losses.sum().item()}")
+            # Evaluation on full test set
+            test_loss, test_acc = evaluate(net, criterion, test_x, test_y)
 
-        net.train()
+            loss_gap = test_loss - train_loss
+            acc_gap = test_acc - train_acc
 
-        x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
+            weights_tensor = torch.stack(weights_tensor, requires_grad=False)
+            weights_np = weights_tensor.cpu().numpy()
+            losses_np = torch.stack(loss_history).cpu().numpy()
 
-        opt.zero_grad()
-        out = net(x)
-        loss = crit(out, y)
+            # jump_size is a parameter of the persistent homology part
+            # it defines how many finite set are drawn to perform the affine regression
+            jump_size = int((ripser_points - min_points) / jump)
 
-        if i % 1000 == 0:
-            logger.info(f"Loss at iteration {i}: {loss.item()}")
+            logger.info("Computing euclidean PH dim...")
+            ph_dim_euclidean = fast_ripser(weights_np,
+                                           max_points=ripser_points,
+                                           min_points=min_points,
+                                           point_jump=jump_size)
 
-        if torch.isnan(loss):
-            logger.error('Loss has gone nan ❌')
-            break
+            logger.info("Computing L1 losses based PH dim...")
+            ph_dim_losses_based = fast_ripser(losses_np,
+                                              max_points=ripser_points,
+                                              min_points=min_points,
+                                              point_jump=jump_size,
+                                              metric="manhattan")
 
-        # calculate the gradients
-        loss.backward()
+            weight_norm = np.linalg.norm(weights_np[-1]).item()
 
-        # take the step
-        opt.step()
-
-        if i > iterations:
-            CONVERGED = True
-            if not compute_dimensions:
-                STOP=True
-
-        if CONVERGED:
-            weights_history.append(get_weights(net))
-
-            if compute_dimensions:
-                if not model == 'cnn':
-                    tr_hist, losses, _ = eval_on_tensors(eval_x, eval_y, net, crit_unreduced)
-                else:
-                    tr_hist, losses, _ = eval(train_loader_eval, net, crit_unreduced, opt)
-                loss_history.append(losses.cpu())
-
-            # Validation history
-            if not model == 'cnn':
-                te_hist, _, _ = eval_on_tensors(test_x, test_y, net, crit_unreduced)
-            else:
-                te_hist, _, _ = eval(test_loader_eval, net, crit_unreduced, opt)
-
-        else:
-            if tr_hist[1] < 15 and i > 1000000:
-                logger.error('Training accuracy is below 20% - not converging ❌')
-                break
-
-        # clear cache
-        torch.cuda.empty_cache()
-
-        if (len(weights_history) > ripser_points) and compute_dimensions:
-
-            weights_history.popleft()
-            loss_history.popleft()
-
-            if random:
-                STOP = True
-            else:
-                DIM_NOW = True
-
-        # final evaluation and saving results
-        if CONVERGED and (STOP or DIM_NOW):
-            
-            DIM_NOW = False
-
-            # if no convergence, we don't record
-            if len(weights_history) < ripser_points - 1:
-                logger.warning("Experiment did not converge")
-                break
-
-            with torch.no_grad():
-
-                # Some logging
-                logger.debug('eval time {}'.format(i))
-                te_hist, *_ = eval(test_loader_eval, net, crit_unreduced, opt)
-                tr_hist, *_ = eval(train_loader_eval, net, crit_unreduced, opt)
-
-                if random:
-                    tr_acc = tr_hist[1]
-                    te_acc = te_hist[1]
-                    acc_gap = tr_acc - te_acc
-
-                    tr_loss = tr_hist[0]
-                    te_loss = te_hist[0]
-                    loss_gap = te_loss - tr_loss
-                else:
-                    tr_acc.append(tr_hist[1])
-                    te_acc.append(te_hist[1])
-                    acc_gap.append(tr_hist[1] - te_hist[1])
-
-                    tr_loss.append(tr_hist[0])
-                    te_loss.append(te_hist[0])
-                    loss_gap.append(te_hist[0] - tr_hist[0])
-
-                # Turn collected iterates (both weights and losses) into numpy arrays
-                if compute_dimensions:
-                    weights_history_np = np.stack(tuple(weights_history))
-                    del weights_history
-
-                loss_history_np = torch.stack(tuple(loss_history)).cpu().numpy()
-
-                # jump_size is a parameter of the persistent homology part
-                # Ijump defines how many finite set are drawn to perform the affine regression
-                jump_size = int((ripser_points - min_points) / jump)
-
-                if compute_dimensions:
-
-                    logger.info("Computing euclidean PH dim...")
-                    ph_dim_euclidean_value = fast_ripser(weights_history_np,
-                                                   max_points=ripser_points,
-                                                   min_points=min_points,
-                                                   point_jump=jump_size)
-
-                    logger.info("Computing L1 losses based PH dim...")
-                    ph_dim_losses_based_value = fast_ripser(loss_history_np,
-                                                      max_points=ripser_points,
-                                                      min_points=min_points,
-                                                      point_jump=jump_size,
-                                                      metric="manhattan")
-
-                    traj = torch.tensor(weights_history_np, requires_grad=False)
-
-                    alpha_full_5000 = estimator_vector_full(traj)
-                    alpha_proj_med_5000, alpha_proj_max_5000 = estimator_vector_projected(traj)
-
-                    traj_epoch = traj[-len(train_loader):]
-
-                    alpha_full_epoch = estimator_vector_full(traj_epoch)
-                    alpha_proj_med_epoch, alpha_proj_max_epoch = estimator_vector_projected(traj_epoch)
-
-                    # the std deviation of all points from the centroid
-                    std_dist_value = torch.sqrt(torch.sum(torch.var(torch.tensor(traj), dim=0))).item()
-                    norm_value = np.linalg.norm(traj[-1]).item()
-
-                    step_sizes = [] # need to start with None as no step size for first point
-
-                    for q in range(1, traj.shape[0]):
-
-                        gradient_update = traj[q] - traj[q-1] # difference between points
-                        step_sizes.append(torch.norm(gradient_update)) # euclidean distance between points
-
-                    mean_step_size_value = np.mean(step_sizes)
-
-                    if random:
-                        ph_dim_euclidean = ph_dim_euclidean_value
-                        ph_dim_losses_based = ph_dim_losses_based_value
-                        std_dist = std_dist_value
-                        norm = norm_value
-                        mean_step_size = mean_step_size_value
-
-                    else:
-                        ph_dim_euclidean.append(ph_dim_euclidean_value)
-                        ph_dim_losses_based.append(ph_dim_losses_based_value)
-                        std_dist.append(std_dist_value)
-                        norm.append(norm_value)
-                        mean_step_size.append(mean_step_size_value)
-
-                    weights_history = deque([])
-                    loss_history = deque([])
-
-                else:
-                    ph_dim_euclidean = None
-                    ph_dim_losses_based = None
-                    alpha_full_5000 = None
-                    alpha_proj_med_5000 = None
-                    alpha_proj_max_5000 = None
-                    alpha_full_epoch = None
-                    alpha_proj_med_epoch = None
-                    alpha_proj_max_epoch = None
-                    std_dist = None
-                    norm = None
-                    mean_step_size = None
-
-            if random:
-                END = True
-
-            elif len(ph_dim_euclidean) == 3:
-                END = True
-
-            if END:
-
-                exp_dict = {
-                    "ph_dim_euclidean": ph_dim_euclidean,
-                    "ph_dim_losses_based": ph_dim_losses_based,
-                    "alpha_full_5000" : alpha_full_5000,
-                    "alpha_proj_med_5000": alpha_proj_med_5000,
-                    "alpha_proj_max_5000": alpha_proj_max_5000,
-                    "alpha_full_epoch": alpha_full_epoch,
-                    "alpha_proj_med_epoch": alpha_proj_med_epoch,
-                    "alpha_proj_max_epoch": alpha_proj_max_epoch,
-                    "std_dist": std_dist,
-                    "norm": norm,
-                    "step_size": mean_step_size,
-                    "train_acc": tr_acc,
-                    "eval_acc": te_acc,
-                    "acc_gap": acc_gap,
-                    "train_loss": tr_loss,
-                    "test_loss": te_loss,
-                    "loss_gap": loss_gap,
-                    "learning_rate": lr,
-                    "batch_size": int(batch_size_train),
-                    "LB_ratio": lr / batch_size_train,
-                    "depth": depth,
-                    "width": width,
-                    "model": model,
-                    "iterations": i,
-                    "seed": seed,
-                    "dataset": dataset,
-                    "init": 'adv' if random else 'random',
-                }
-                break
-
-        # Saving weights if specified
-        if save_weights_file is not None:
-            # logger.info(f"Saving last weights in {str(save_weights_file)}")
-            torch.save(net.state_dict(), str(save_weights_file))
-            exp_dict["saved_weights"] = str(save_weights_file)
+            exp_dict = {
+                "ph_dim_euclidean": ph_dim_euclidean,
+                "ph_dim_losses_based": ph_dim_losses_based,
+                "weight_norm": weight_norm,
+                "train_acc": train_acc,
+                "eval_acc": test_acc,
+                "acc_gap": acc_gap,
+                "train_loss": train_loss,
+                "test_loss": test_loss,
+                "loss_gap": loss_gap,
+                "learning_rate": lr,
+                "batch_size": int(batch_size_train),
+                "LB_ratio": lr / batch_size_train,
+                "depth": depth,
+                "width": width,
+                "model": model,
+                "iterations": i,
+                "seed": seed,
+                "dataset": dataset,
+                "init": 'adversarial' if adversarial_init else 'random',
+            }
 
     return exp_dict
