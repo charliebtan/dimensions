@@ -1,9 +1,12 @@
 import torch
 import torch.nn as nn
+from torch import Tensor
+from typing import Tuple
 
 class MLP(nn.Module):
+    """A simple multi-layer perceptron (fully connected neural network)."""
 
-    def __init__(self, input_dim, output_dim, width=50, depth=3):
+    def __init__(self, input_dim: int, output_dim: int, width: int = 50, depth: int = 3) -> None:
         super().__init__()
 
         input_layer = nn.Linear(input_dim, width)
@@ -22,15 +25,15 @@ class MLP(nn.Module):
             output_layer,
         )
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
         x = x.view(x.size(0), -1)
         x = self.mlp(x)
         return x
 
-def fc5(input_shape, output_dim):
-    input_dim = torch.prod(torch.tensor(input_shape))
+def fc5(input_shape: Tuple[int, ...], output_dim: int) -> MLP:
+    input_dim = torch.prod(torch.tensor(input_shape)).item()
     return MLP(input_dim, output_dim, depth=5)
 
-def fc7(input_shape, output_dim):
-    input_dim = torch.prod(torch.tensor(input_shape))
+def fc7(input_shape: Tuple[int, ...], output_dim: int) -> MLP:
+    input_dim = torch.prod(torch.tensor(input_shape)).item()
     return MLP(input_dim, output_dim, depth=7)
