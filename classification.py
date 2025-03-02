@@ -1,20 +1,18 @@
-from collections import deque
-from pathlib import Path
-
 import numpy as np
 import torch
 import torch.nn as nn
 import wandb
 from loguru import logger
-
-import copy
+import argparse
 
 import models
 
 from topology import fast_ripser
-from utils import accuracy
+from train_utils import train_step, evaluate, adversarial_pretrain
+from utils import get_weights
 from dataset import prepare_data, cycle_loader
 
+torch.set_float32_matmul_precision('high')
 
 def build_model(model_name, dataset_name, cnn_width=None):
 
@@ -49,83 +47,6 @@ def build_model(model_name, dataset_name, cnn_width=None):
 
     return net
 
-
-
-
-def get_weights(net):
-    return torch.cat([p.view(-1).detach().cpu() for p in net.parameters()]).numpy()
-
-from utils import accuracy
-import argparse
-
-torch.set_float32_matmul_precision('high')
-
-@torch.no_grad()
-def evaluate(net, criterion, dataloader, batch_size=None):
-
-    total_loss = 0.0
-    total_acc = 0.0
-    losses_tensors = []
-
-    for x, y in dataloader:
-
-        out = net(x)
-        loss = criterion(out, y)
-
-        acc = accuracy(out, y)
-
-        total_loss += loss.sum()
-        total_acc += acc
-
-        losses_tensors.append(loss)
-
-    mean_loss = total_loss / len(dataloader.dataset)
-    mean_acc = total_acc / len(dataloader.dataset)
-
-    return mean_loss.item(), mean_acc.item(), torch.cat(losses_tensors)
-
-def train_step(net, opt, criterion, data):
-
-    x, y = data
-
-    net.train()
-    opt.zero_grad()
-    out = net(x)
-    loss = criterion(out, y).mean()
-    loss.backward()
-    opt.step()
-
-    return loss
-
-def adversarial_pretrain(net, opt, criterion, dataloader, dataloader_eval):
-
-    logger.info("Starting adversarial pretraining")
-
-    # Randomize the labels at the start of training
-    random_indices = torch.randperm(len(dataloader_eval.dataset))
-    dataloader.dataset.y = dataloader.dataset.y[random_indices]
-    dataloader_eval.dataset.y = dataloader_eval.dataset.y[random_indices]
-
-    for i, (x, y) in enumerate(cycle_loader(dataloader)):
-
-        train_step(net, opt, criterion, (x, y))
-
-        if i % 1000 == 0:
-
-            # We don't use the loss from training, but re-compute it on the full set with fixed parameters
-
-            loss, acc, _ = evaluate(net, criterion, dataloader_eval)
-            logger.info(f"Adversarial pretraining iteration {i} - Loss: {loss}, Acc: {acc}")
-
-            if int(acc) == 100:
-                logger.info(f'All random training data is correctly classified in {i} iterations! ✅')
-                break 
-
-    # Restore the original labels
-    inverse_random_indices = torch.argsort(random_indices)
-    dataloader.dataset.y = dataloader.dataset.y[inverse_random_indices]
-    dataloader_eval.dataset.y = dataloader_eval.dataset.y[inverse_random_indices]
-
 def main():
 
     parser = argparse.ArgumentParser(description="Train a neural network with PH dimension analysis")
@@ -134,7 +55,7 @@ def main():
     parser.add_argument("--adversarial_init", action="store_true", help="Use adversarial initialization")
     parser.add_argument("--dataset", type=str, default="mnist", help="Dataset to use, supported: ['mnist', 'cifar10']")
     parser.add_argument("--data_path", type=str, default="~/data/", help="Path to the data")
-    parser.add_argument("--max_iterations", type=int, default=10000000000, help="Maximum authorized number of iterations")
+    parser.add_argument("--max_iterations", type=int, default=1e7, help="Maximum authorized number of iterations")
     parser.add_argument("--lr", type=float, default=1e-2, help="Learning rate in the experiment")
     parser.add_argument("--batch_size", type=int, default=128, help="Batch size in the experiment")
     parser.add_argument("--batch_size_eval", type=int, default=100_000, help="Batch size used for evaluation, set very high for full batch")
@@ -146,6 +67,9 @@ def main():
     parser.add_argument("--save_folder", type=str, default="./results", help="Where to save the results")
 
     args = parser.parse_args()
+
+    wandb.init()
+    wandb.config.update(args)
 
     # Setup experiment
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -237,10 +161,7 @@ def main():
     weights_np = weights_tensor.cpu().numpy()
     losses_np = torch.tensor(losses_list).cpu().numpy()
 
-    # jump_size is a parameter of the persistent homology part
-    # it defines how many finite set are drawn to perform the affine regression
     jump_size = int((args.max_ripser_points - args.min_ripser_points) / args.ripser_jump)
-
     logger.info("Computing euclidean PH dim...")
     ph_dim_euclidean = fast_ripser(weights_np,
                                    max_points=args.max_ripser_points,
@@ -267,14 +188,7 @@ def main():
         "train_loss": train_set_loss,
         "test_loss": test_set_loss,
         "loss_gap": loss_gap,
-        "learning_rate": args.lr,
-        "batch_size": int(args.batch_size),
-        "LB_ratio": args.lr / args.batch_size,
-        "model": args.model,
-        "dataset": args.dataset,
         "iterations": i,
-        "seed": args.seed,
-        "init": 'adversarial' if args.adversarial_init else 'random',
     }
 
     wandb.log(exp_dict)
