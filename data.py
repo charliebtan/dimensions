@@ -3,21 +3,10 @@ from torchvision import datasets, transforms
 from typing import Tuple
 from torch.utils.data import DataLoader, Dataset
 from torchvision.datasets import VisionDataset
+import numpy as np
 
-DATA_STATS = {
-    'MNIST': {
-        'mean': [0.1307],
-        'std': [0.3081]
-    },
-    'CIFAR10': {
-        'mean': [0.491, 0.482, 0.447],
-        'std': [0.247, 0.243, 0.262]
-    },
-    'CIFAR100': {
-        'mean': [0.507, 0.487, 0.441],
-        'std': [0.268, 0.257, 0.276]
-    }
-}
+from sklearn.datasets import fetch_california_housing
+from sklearn.model_selection import train_test_split
 
 class QuickDataset(Dataset):
     """Is faster for small datasets than the default PyTorch Dataset class."""
@@ -46,8 +35,29 @@ def get_data_as_tensors(dataloader: DataLoader) -> Tuple[torch.Tensor, torch.Ten
 
     return torch.cat(all_x), torch.cat(all_y)
 
-def prepare_data(dataset: str, path: str, batch_size: int, batch_size_eval: int) -> Tuple[DataLoader, DataLoader, DataLoader]:
+def loop_dataloader(dataloader: DataLoader) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Infinite loop over the dataloader."""
+    while True:
+        for data in dataloader:
+            yield data
+
+def prepare_data_classification(dataset: str, path: str, batch_size: int, batch_size_eval: int) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """Prepare the data for training and evaluation."""
+
+    DATA_STATS = {
+    'MNIST': {
+        'mean': [0.1307],
+        'std': [0.3081]
+    },
+    'CIFAR10': {
+        'mean': [0.491, 0.482, 0.447],
+        'std': [0.247, 0.243, 0.262]
+    },
+    'CIFAR100': {
+        'mean': [0.507, 0.487, 0.441],
+        'std': [0.268, 0.257, 0.276]
+    }
+    }
 
     dataset = dataset.upper()
 
@@ -114,8 +124,43 @@ def prepare_data(dataset: str, path: str, batch_size: int, batch_size_eval: int)
 
     return train_loader, train_loader_eval, test_loader_eval
 
-def cycle_loader(dataloader: DataLoader) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Infinite loop over the dataloader."""
-    while True:
-        for data in dataloader:
-            yield data
+def prepare_data_regression(dataset: str, path: str, batch_size: int) -> Tuple[DataLoader, Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor]]:
+
+    # For reproducibility
+    DATA_SPLIT_SEED = 56 
+    VALIDATION_PROPORTION = 0.2 
+
+    if dataset != "california":
+        raise NotImplementedError(f"Dataset {dataset} not implemented, should be in ['california']")
+
+    # Load the data
+    features, targets = fetch_california_housing(return_X_y=True, data_home=path)
+
+    # Normalize
+    features = features.astype(np.float64)
+    targets = targets.astype(np.float64)
+    features = (features - features.mean(0)) / features.std(0)
+
+    # Split
+    train_features, test_features, train_targets, test_targets = train_test_split(
+        features,
+        targets,
+        test_size=VALIDATION_PROPORTION,
+        random_state=DATA_SPLIT_SEED,
+    )
+
+    # Convert to tensor
+    train_features = torch.from_numpy(train_features.astype(np.float32))
+    test_features = torch.from_numpy(test_features.astype(np.float32))
+    train_targets = torch.from_numpy(train_targets.reshape(-1, 1).astype(np.float32))
+    test_targets = torch.from_numpy(test_targets.reshape(-1, 1).astype(np.float32))
+
+    # Define training dataloader
+    train_dataset = torch.utils.data.TensorDataset(train_features, train_targets)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+
+    print("find the right sizes")
+    breakpoint()
+
+    return train_loader, (train_features, train_targets), (test_features, test_targets)
+

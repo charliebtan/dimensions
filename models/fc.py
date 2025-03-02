@@ -30,10 +30,10 @@ class MLP(nn.Module):
         x = self.mlp(x)
         return x
 
-def fc5(input_shape: Tuple[int, ...], output_dim: int) -> MLP:
+def fc5(input_shape: Tuple[int, ...], output_dim: int, **kwargs) -> MLP:
     input_dim = torch.prod(torch.tensor(input_shape)).item()
-    return MLP(input_dim, output_dim, depth=5)
+    return MLP(input_dim, output_dim, depth=5, **kwargs)
 
-def fc7(input_shape: Tuple[int, ...], output_dim: int) -> MLP:
+def fc7(input_shape: Tuple[int, ...], output_dim: int, **kwargs) -> MLP:
     input_dim = torch.prod(torch.tensor(input_shape)).item()
-    return MLP(input_dim, output_dim, depth=7)
+    return MLP(input_dim, output_dim, depth=7, **kwargs)

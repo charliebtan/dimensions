@@ -15,13 +15,6 @@ You can very easily install the project with the following command:
 
 All requirements are in the file `requirements.txt`.
 
-## Pytests
-
-To check if the installation worked, you can run pytests with the following command:
-
-`pytest -x -vv`
-
-
 ## Main experiments
 
 All scripts are run form the root. change the python path in case of import errors (`export PYTTHONPATH=$PWD` in linux). We provide simple examples, the code can easily be extended to more complex models and datasets.

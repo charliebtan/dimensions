@@ -10,428 +10,189 @@ import torch
 import wandb
 from loguru import logger
 from pydantic import BaseModel
-from sklearn.datasets import fetch_california_housing
-from sklearn.model_selection import train_test_split
+
 
 from models import fc_bhp
+
+import numpy as np
+import torch
+import torch.nn as nn
+import wandb
+from loguru import logger
+import argparse
+
+import models
 from topology import fast_ripser
-
-from PHDim.hausdorff_alpha import estimator_vector_full, estimator_vector_projected
-
-
-DATA_SEED = 56  # For splitting in test:train
+from train_utils import train_step, evaluate_regressor
+from utils import get_weights
+from data import prepare_data_regression, loop_dataloader
 
 
-def reset_wandb_env():
-    exclude = {
-        "WANDB_PROJECT",
-        "WANDB_ENTITY",
-        "WANDB_API_KEY",
-    }
-    for k, v in os.environ.items():
-        if k.startswith("WANDB_") and k not in exclude:
-            del os.environ[k]
+torch.set_float32_matmul_precision('high')
 
+def build_model(model_name, dataset_name):
 
-def get_weights(net) -> torch.Tensor:
-    with torch.no_grad():
-        w = []
+    model_name = model_name.lower()
+    dataset_name = dataset_name.lower()
 
-        # TODO: improve this?
-        for p in net.parameters():
-            w.append(p.view(-1).detach().to(torch.device('cpu')))
-        return torch.cat(w)
+    # Initstantiate the model
+    if model_name not in ["fc5", "fc7"]:
+        raise NotImplementedError(f"Model {model_name} not implemented, should be in ['fc5', 'fc7']")
 
-
-@torch.no_grad()
-def eval_bhp(train_x, train_y, net, obj) -> float:
-
-    net.eval()
-    estimated_y = net(train_x)
-    assert estimated_y.ndim == 2
-    assert estimated_y.shape[1] == 1
-    losses = (estimated_y - train_y).pow(2)
-    loss = losses.mean().cpu().item()
-    return loss, losses.flatten() / train_x.shape[0]
-
-
-@torch.no_grad()
-def eval_non_lipschitz(train_x, train_y, net, obj) -> float:
-
-    net.eval()
-    estimated_y = net(train_x)
-    assert estimated_y.ndim == 2
-    assert estimated_y.shape[1] == 1
-    losses = train_x.pow(2).sum(1) * (estimated_y - train_y).pow(2)
-    loss = losses.mean().cpu().item()
-    return loss, losses.flatten()
-
-
-VALIDATION_PROPORTION = 0.2
-STOPPING_CRITERION = 0.005
-
-
-class UnknownDatasetError(BaseException):
-    ...
-
-
-class UnknownModelError(BaseException):
-    ...
-
-
-def train_one_model(eval_freq: int = 1000,
-                    lr: float = 1.e-3,
-                    iterations: int = 100000,
-                    width: int = 1000,
-                    depth: int = 7,
-                    batch_size: int = 32,
-                    ripser_points: int = 3000,
-                    jump: int = 20,
-                    min_points: int = 200,
-                    dataset_name: str = "california",
-                    model: str = "fcnn",
-                    stopping_criterion: float = STOPPING_CRITERION,
-                    ph_period: int = None,
-                    additional_dimensions: bool = False,
-                    save_weights_file = None,
-                    seed: int = None,
-                    ):
-
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    device = torch.device(device)
-
-    torch.manual_seed(seed)
-
-    torch.set_float32_matmul_precision('high')
-
-    # data
-    if dataset_name == "boston":
-        dataset, targets = load_boston(return_X_y=True)
-    elif dataset_name == "california":
-        dataset, targets = fetch_california_housing(return_X_y=True)
+    if dataset_name == "california":
+        input_shape = (1, 28, 28)
+        output_dim = 10
+        width = 200
     else:
-        raise UnknownDatasetError(f"Dataset {dataset_name} is unknown or not supported")
-    dataset = dataset.astype(np.float64)
-    targets = targets.astype(np.float64)
-    dataset = (dataset - dataset.mean(0)) / dataset.std(0)
-    # dataset = (dataset - dataset.mean(0))
+        raise NotImplementedError(f"Dataset {dataset_name} not implemented, should be in ['california']")
 
-    training_set, test_set, training_targets, test_targets = train_test_split(dataset,
-                                                                              targets,
-                                                                              test_size=VALIDATION_PROPORTION,
-                                                                              random_state=DATA_SEED)
+    net_factory = getattr(models, model_name)
+    net = net_factory(input_shape, output_dim, width)
 
-    np.random.seed(DATA_SEED)
+    logger.info("Network:")
+    logger.info(net)
 
-    # Turning data into tensors
-    training_set = torch.from_numpy(training_set.astype(np.float32)).to(device)
-    test_set = torch.from_numpy(test_set.astype(np.float32)).to(device)
-    training_targets = torch.from_numpy(training_targets.reshape(-1, 1).astype(np.float32)).to(device)
-    test_targets = torch.from_numpy(test_targets.reshape(-1, 1).astype(np.float32)).to(device)
+    return net
 
-    # Defining dataloaders
-    dataset_train = torch.utils.data.TensorDataset(training_set, training_targets)
-    dataloader = torch.utils.data.DataLoader(dataset_train, batch_size=batch_size, shuffle=True)
+def main():
 
-    def cycle_training(loader):
-        while True:
-            for data in loader:
-                yield data
-    cycle_dataloader = cycle_training(dataloader)
+    parser = argparse.ArgumentParser(description="Train a neural network with PH dimension analysis")
 
-    # model
-    input_dim = training_set.shape[1]
+    parser.add_argument("--model", type=str, default="fc5", help="Model to use, supported: ['fc5', 'fc7']")
+    parser.add_argument("--dataset", type=str, default="california", help="Dataset to use, supported: ['california']")
+    parser.add_argument("--data_path", type=str, default="~/data/", help="Path to the data")
+    parser.add_argument("--max_iterations", type=int, default=1e7, help="Maximum authorized number of iterations")
+    parser.add_argument("--lr", type=float, default=1e-2, help="Learning rate in the experiment")
+    parser.add_argument("--batch_size", type=int, default=32, help="Batch size in the experiment")
+    parser.add_argument("--batch_size_eval", type=int, default=100_000, help="Batch size used for evaluation, set very high for full batch")
+    parser.add_argument("--eval_freq", type=int, default=2000, help="Frequency at which we evaluate the model (training and validation sets)")
+    parser.add_argument("--ripser_jump", type=int, default=20, help="Number of finite sets drawn to compute the PH dimension")
+    parser.add_argument("--min_ripser_points", type=int, default=1000, help="Minimum number of points used to compute the PH dimension")
+    parser.add_argument("--max_ripser_points", type=int, default=5000, help="Maximum number of points used to compute the PH dimension")
+    parser.add_argument("--stopping_criterion", type=float, default=5e-3, help="Stopping criterion for convergence")
+    parser.add_argument("--seed", type=int, default=0, help="Random seed")
+    parser.add_argument("--save_folder", type=str, default="./results", help="Where to save the results")
 
-    if model == "fcnn":
-        net = fc_bhp(width=width, depth=depth, input_dim=input_dim).to(device)
-    elif model == "attention":
-        net = AttentionFCNN(depth=depth, width=width, input_dim=input_dim).to(device)
-    else:
-        raise UnknownModelError(f"Model {model} not implemented")
-    print(net)
-    n_weights = 0
-    for p in net.parameters():
-        n_weights += p.flatten().shape[0]
+    args = parser.parse_args()
 
-    # Defining objectives and optimizers
-    obj = torch.nn.MSELoss()
-    optim = torch.optim.SGD(net.parameters(), lr=lr)
+    wandb.init()
+    wandb.config.update(args)
 
-    STOP = False
-    risk_hist, eval_hist, batch_risk_hist = [], [], []
+    # Setup experiment
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    logger.info(f"On device: {str(device)}")
+    logger.info(f"Random seed: {args.seed}")
+    torch.manual_seed(args.seed)
 
-    weights_history = deque([])
-    batch_risk_history = deque([])
-    outputs_history = deque([])
-    eval_history = deque([])
+    # Prepare the data
+    train_loader, train_dataset, test_dataset = prepare_data_regression(args.dataset, args.data_path, args.batch_size)
 
-    # previous_weights = None
-    previous_train_loss = None
-    CONVERGED = False
-    DIM_NOW = False
-    exp_results = {}
-    avg_train_loss = 0.
+    # Build the model
+    net = build_model(args.model, args.dataset).to(device)
 
-    ph_dim_euclidean = []
-    ph_dim_losses_based = []
-    ph_dim_eval_based = []
-    std_dist = []
-    norm = []
-    mean_step_size = []
-    loss_trains = []
-    loss_evals = []
-    loss_gaps = []
+    # Define the loss function
+    criterion = nn.MSELoss(reduction='none').to(device)
+
+    # Define optimizer
+    opt = torch.optim.SGD(net.parameters(), lr=args.lr)
+
+    # Lists to store the weights and losses for the persistent homology computation
+    weights_list = []
+    losses_list = []
 
     logger.info("Starting training")
-    for i, (x, y) in enumerate(cycle_dataloader):
 
-        with torch.no_grad():
+    previous_train_set_loss = 1e9
+    training_converged = False
+    for i, (x, y) in enumerate(loop_dataloader(train_loader)):
 
-            if i % eval_freq == 0:
-                loss_eval, _ = eval_bhp(test_set, test_targets, net, obj)
-                eval_hist.append(loss_eval)
-                logger.info(f"Evaluation at iteration {i} finished ✅, score (deviation): {np.sqrt(loss_eval)}")
+        x = x.to(device)
+        y = y.to(device)
 
-                loss_train, features = eval_bhp(training_set, training_targets, net, obj)
-                logger.info(f"Evaluation on training set at iteration {i} finished ✅, score (deviation): {np.sqrt(loss_train)}")
+        # Take a training step
+        loss = train_step(net, opt, criterion, (x, y))
 
-                avg_train_loss += loss_train
-                # wandb.log({"training set loss": loss_train})
-
-                # Stopping criterion on instant train loss
-                if (i > 0) and (np.abs(loss_train - previous_train_loss) / previous_train_loss < stopping_criterion):
-                    if not CONVERGED:
-                        logger.info(f"Experiment converged in {i} iterations !!")
-                        CONVERGED = True
-
-                previous_train_loss = loss_train
-
-        net.train()
-
-        x, y = x.to(device), y.to(device)
-
-        optim.zero_grad()
-        out = net(x)
-        loss = obj(out, y)
+        if i % 1000 == 0:
+            logger.info(f"Iteration {i} - Train loss: {loss.item():.3f}")
 
         if torch.isnan(loss):
-            logger.error('Loss has gone nan ❌')
-            break
+            logger.error('Loss has gone NaN ❌')
+            return
 
-        # calculate the gradients
-        loss.backward()
+        if i > args.max_iterations:
+            training_converged = True
 
-        # take the step
-        optim.step()
+        # Evaluation on both datasets
+        if i % args.eval_freq == 0 and not training_converged:
 
-        # Some logging
-        batch_risk_history.append([loss.cpu().item()])
-        batch_risk_hist.append([i, loss.cpu().item()])
+            # Evaluation on full training set
+            train_set_loss, _ = evaluate_regressor(net, criterion, train_dataset)
 
-        if i > iterations:
-            CONVERGED = True
+            # Evaluation on full test set
+            test_set_loss, _ = evaluate_regressor(net, criterion, test_dataset)
+            logger.info(f"Evaluation at iteration {i} - Train loss: {train_set_loss:.3f}, Test loss: {test_set_loss:.3f}")
 
-        with torch.no_grad():
+            # Stop when reach convergence criterion
+            if (i > 0) and (np.abs(train_set_loss - previous_train_set_loss) / previous_train_loss < args.stopping_criterion):
+                logger.info(f"Experiment converged in {i} iterations")
+                training_converged = True
 
-            if CONVERGED or ((ph_period is not None) and (not CONVERGED) and (i % ph_period == 0)):
-                weights_history.append(get_weights(net))
-                loss_train, features = eval_bhp(training_set, training_targets, net, obj)
-                outputs_history.append(features)
-                loss_eval, features = eval_bhp(test_set, test_targets, net, obj)
-                eval_history.append(features)
+            previous_train_loss = train_set_loss
 
-            if len(weights_history) >= ripser_points:
-                DIM_NOW = True
-                if ph_period is not None:
-                    weights_history.popleft()
-                    outputs_history.popleft()
-                    eval_history.popleft()
+        elif training_converged:
 
-                # clear cache
-        torch.cuda.empty_cache()
+            # Store weights for Euclidean PH dim
+            weights_list.append(get_weights(net))
 
-        # Saving weights if specified
-        if save_weights_file is not None:
-            # logger.info(f"Saving last weights in {str(save_weights_file)}")
-            torch.save(net.state_dict(), str(save_weights_file))
+            # Store losses for loss-based PH dim
+            _, train_losses_tensor = evaluate_regressor(net, criterion, train_dataset)
+            logger.info(f"Computed loss tensor at iteration {i}")
+            losses_list.append(train_losses_tensor)
 
-        if DIM_NOW and CONVERGED:
-
-            DIM_NOW = False
-
-            with torch.no_grad():
-
-                if len(weights_history) < ripser_points:
-                    logger.warning("Experiment did not converge")
-                    break
-
-                loss_eval_value, _ = eval_bhp(test_set, test_targets, net, obj)
-                eval_hist.append(loss_eval)
-
-                loss_train_value, _ = eval_bhp(training_set, training_targets, net, obj)
-                risk_hist.append([i, loss_train])
-
-                loss_trains.append(loss_train_value)
-                loss_evals.append(loss_eval_value)
-                loss_gaps.append(loss_train_value - loss_eval_value)
-
-                logger.info(f"Final sqrt(losses): train: {round(np.sqrt(loss_train), 2)}, eval: {round(np.sqrt(loss_eval), 2)}")
-
-                weights_history_np = torch.stack(tuple(weights_history)).cpu().numpy()
-                outputs_history_np = torch.stack(tuple(outputs_history)).cpu().numpy()
-                eval_history_np = torch.stack(tuple(eval_history)).cpu().numpy()
-
-                del weights_history
-
-                jump_size = int((ripser_points - min_points) / jump)
-
-                logger.info("Computing euclidean PH dim...")
-                ph_dim_euclidean_value = fast_ripser(weights_history_np,
-                                               max_points=ripser_points,
-                                               min_points=min_points,
-                                               point_jump=jump_size)
-
-                logger.info("Computing PH dim in output space...")
-                ph_dim_losses_based_value = fast_ripser(outputs_history_np,
-                                                  max_points=ripser_points,
-                                                  min_points=min_points,
-                                                  point_jump=jump_size,
-                                                  metric="manhattan")
-
-                logger.debug(f"outputs shape: {outputs_history_np.shape}")
-
-                logger.info("Computing PH dim in eval space...")
-                ph_dim_eval_based_value = fast_ripser(eval_history_np,
-                                                max_points=ripser_points,
-                                                min_points=min_points,
-                                                point_jump=jump_size)
-
-                traj = torch.tensor(weights_history_np, requires_grad=False)
-
-                print(traj.shape)
-
-                alpha_full_5000 = estimator_vector_full(traj)
-                alpha_proj_med_5000, alpha_proj_max_5000 = estimator_vector_projected(traj)
-
-                traj_epoch = traj[-len(dataloader):]
-
-                alpha_full_epoch = estimator_vector_full(traj_epoch)
-                alpha_proj_med_epoch, alpha_proj_max_epoch = estimator_vector_projected(traj_epoch)
-
-                # the std deviation of all points from the centroid
-                std_dist_value = torch.sqrt(torch.sum(torch.var(torch.tensor(traj), dim=0))).item()
-                norm_value = np.linalg.norm(traj[-1]).item()
-
-                step_sizes = [] # need to start with None as no step size for first point
-
-                for q in range(1, traj.shape[0]):
-
-                    gradient_update = traj[q] - traj[q-1] # difference between points
-                    step_sizes.append(torch.norm(gradient_update)) # euclidean distance between points
-
-                mean_step_size_value = np.mean(step_sizes)
-
-                ph_dim_euclidean.append(ph_dim_euclidean_value)
-                ph_dim_losses_based.append(ph_dim_losses_based_value)
-                ph_dim_eval_based.append(ph_dim_eval_based_value)
-                std_dist.append(std_dist_value)
-                norm.append(norm_value)
-                mean_step_size.append(mean_step_size_value)
-
-                weights_history = deque([])
-                batch_risk_history = deque([])
-                outputs_history = deque([])
-                eval_history = deque([])
-
-            if len(ph_dim_euclidean) == 3:
-
-                exp_dict = {
-                    "ph_dim_euclidean": ph_dim_euclidean,
-                    "ph_dim_losses_based": ph_dim_losses_based,
-                    "ph_dim_eval_based": ph_dim_eval_based,
-                    "alpha_full_5000" : alpha_full_5000,
-                    "alpha_proj_med_5000": alpha_proj_med_5000,
-                    "alpha_proj_max_5000": alpha_proj_max_5000,
-                    "alpha_full_epoch": alpha_full_epoch,
-                    "alpha_proj_med_epoch": alpha_proj_med_epoch,
-                    "alpha_proj_max_epoch": alpha_proj_max_epoch,
-                    "std_dist": std_dist,
-                    "norm": norm,
-                    "step_size": mean_step_size,
-                    "train_loss": loss_trains,
-                    "test_loss": loss_evals,
-                    "loss_gap": loss_gaps,
-                    "learning_rate": lr,
-                    "batch_size": int(batch_size),
-                    "LB_ratio": lr / batch_size,
-                    "depth": depth,
-                    "width": width,
-                    "model": model,
-                    "iterations": i,
-                    "seed": seed,
-                    "dataset": dataset_name,
-                }
+            if len(weights_list) == args.max_ripser_points:
                 break
 
-    return exp_dict
+    # Evaluation on full train + test set
+    train_set_loss, _ = evaluate_regressor(net, criterion, train_dataset)
+    test_set_loss, _ = evaluate_regressor(net, criterion, test_dataset)
 
+    # Compute gap
+    loss_gap = test_set_loss - train_set_loss
 
-class BHPAnalysis(BaseModel):
+    # Compute PH dimensions
+    weights_tensor = torch.tensor(weights_tensor, requires_grad=False)
+    weights_np = weights_tensor.cpu().numpy()
+    losses_np = torch.tensor(losses_list).cpu().numpy()
 
-    eval_freq: int = 2000
-    output_dir: str = "./bhp_experiments"
-    iterations: int = 10000000
-    save_outputs: bool = False
-    project_name: str = "ph_dim"
-    width: int = 200
-    depth: int = 5
-    ripser_points: int = 5000
-    jump: int = 20
-    min_points: int = 1000
-    dataset: str = "california"
-    model: str = "fcnn"
-    # bs_min: int = 32
-    # bs_max: int = 200
-    # lr_min: float = 1e-3
-    # lr_max: float = 1e-2
-    stopping_criterion: float = STOPPING_CRITERION
-    ph_period: int = None  # period at which points are taken, if None it will be at the end
-    additional_dimensions: bool = False
-    seeds: list = [i for i in range(10, 30)]
+    jump_size = int((args.max_ripser_points - args.min_ripser_points) / args.ripser_jump)
+    logger.info("Computing euclidean PH dim...")
+    ph_dim_euclidean = fast_ripser(weights_np,
+                                   max_points=args.max_ripser_points,
+                                   min_points=args.min_ripser_points,
+                                   point_jump=jump_size)
 
-    def __call__(self):
+    logger.info("Computing L1 losses based PH dim...")
+    ph_dim_losses_based = fast_ripser(losses_np,
+                                      max_points=args.max_ripser_points,
+                                      min_points=args.min_ripser_points,
+                                      point_jump=jump_size,
+                                      metric="manhattan")
 
-        lr = 1e-2
-        bs = 128
+    # Compute weight norm
+    weight_norm = np.linalg.norm(weights_np[-1]).item()
 
-        for seed in self.seeds:
+    exp_dict = {
+        "ph_dim_euclidean": ph_dim_euclidean,
+        "ph_dim_losses_based": ph_dim_losses_based,
+        "weight_norm": weight_norm,
+        "train_loss": train_set_loss,
+        "test_loss": test_set_loss,
+        "loss_gap": loss_gap,
+        "iterations": i,
+    }
 
-            reset_wandb_env()
-            wandb.init(project=self.project_name, entity='ctan',
-                       config=self.dict()
-            )
-
-            exp_dict = train_one_model(self.eval_freq,
-                                       lr,
-                                       self.iterations,
-                                       self.width,
-                                       self.depth,
-                                       bs,
-                                       self.ripser_points,
-                                       self.jump,
-                                       self.min_points,
-                                       self.dataset,
-                                       self.model,
-                                       self.stopping_criterion,
-                                       self.ph_period,
-                                       self.additional_dimensions,
-                                       f'{self.model}_{self.depth}_{self.dataset}_{lr}_{bs}_{seed}.pth',
-                                       seed=seed,
-                                       )
-
-            wandb.log(exp_dict)
-            wandb.finish()
+    wandb.log(exp_dict)
+    wandb.finish()
 
 if __name__ == "__main__":
-    fire.Fire(BHPAnalysis)
+    main()

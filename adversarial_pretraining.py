@@ -1,49 +1,11 @@
 import torch
 from loguru import logger
 
+from training_utils import train_step, evaluate_classifier
+
 from utils import accuracy
-from dataset import cycle_loader
+from data import loop_dataloader
 from typing import Tuple, List
-
-def train_step(net: torch.nn.Module, opt: torch.optim.Optimizer, criterion: torch.nn.Module, data: Tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
-    """One step of training."""
-
-    x, y = data
-
-    net.train()
-    opt.zero_grad()
-    out = net(x)
-    loss = criterion(out, y).mean()
-    loss.backward()
-    opt.step()
-
-    return loss
-
-@torch.no_grad()
-def evaluate(net: torch.nn.Module, criterion: torch.nn.Module, dataloader: torch.utils.data.DataLoader) -> Tuple[float, float, torch.Tensor]:
-    """Evaluate the network on a dataset, returning the mean loss, 
-    mean accuracy and tensor of all losses."""
-
-    total_loss = 0.0
-    total_acc = 0.0
-    losses_tensors: List[torch.Tensor] = []
-
-    for x, y in dataloader:
-
-        out = net(x)
-        loss = criterion(out, y)
-
-        acc = accuracy(out, y)
-
-        total_loss += loss.sum()
-        total_acc += acc
-
-        losses_tensors.append(loss)
-
-    mean_loss = (total_loss / len(dataloader.dataset)).item()
-    mean_acc = total_acc / len(dataloader.dataset)
-
-    return mean_loss, mean_acc, torch.cat(losses_tensors)
 
 def adversarial_pretrain(net: torch.nn.Module, opt: torch.optim.Optimizer, criterion: torch.nn.Module, dataloader: torch.utils.data.DataLoader, dataloader_eval: torch.utils.data.DataLoader) -> None:
     """Adversarial pretraining of the network on fixed but shuffled labels.
@@ -56,7 +18,7 @@ def adversarial_pretrain(net: torch.nn.Module, opt: torch.optim.Optimizer, crite
     dataloader.dataset.y = dataloader.dataset.y[random_indices]
     dataloader_eval.dataset.y = dataloader_eval.dataset.y[random_indices]
 
-    for i, (x, y) in enumerate(cycle_loader(dataloader)):
+    for i, (x, y) in enumerate(loop_dataloader(dataloader)):
 
         train_step(net, opt, criterion, (x, y))
 
@@ -64,7 +26,7 @@ def adversarial_pretrain(net: torch.nn.Module, opt: torch.optim.Optimizer, crite
 
             # We don't use the loss from training, but re-compute it on the full set with fixed parameters
 
-            loss, acc, _ = evaluate(net, criterion, dataloader_eval)
+            loss, acc, _ = evaluate_classifier(net, criterion, dataloader_eval)
             logger.info(f"Adversarial pretraining iteration {i} - Loss: {loss}, Acc: {acc}")
 
             if int(acc) == 100:

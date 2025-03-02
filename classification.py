@@ -7,10 +7,11 @@ import argparse
 
 import models
 
-from topology import fast_ripser
-from train_utils import train_step, evaluate, adversarial_pretrain
+from ph_dimension import fast_ripser
+from training_utils import train_step, evaluate_classifier
+from adversarial_pretraining import adversarial_pretrain
 from utils import get_weights
-from dataset import prepare_data, cycle_loader
+from data import prepare_data_classification, loop_dataloader
 
 torch.set_float32_matmul_precision('high')
 
@@ -61,8 +62,8 @@ def main():
     parser.add_argument("--batch_size_eval", type=int, default=100_000, help="Batch size used for evaluation, set very high for full batch")
     parser.add_argument("--eval_freq", type=int, default=5000, help="Frequency at which we evaluate the model (training and validation sets)")
     parser.add_argument("--ripser_jump", type=int, default=20, help="Number of finite sets drawn to compute the PH dimension")
-    parser.add_argument("--min_ripser_points", type=int, default=1000, help="Minimum number of points used to compute the PH dimension")
-    parser.add_argument("--max_ripser_points", type=int, default=5000, help="Maximum number of points used to compute the PH dimension")
+    parser.add_argument("--min_ripser_points", type=int, default=10, help="Minimum number of points used to compute the PH dimension")
+    parser.add_argument("--max_ripser_points", type=int, default=50, help="Maximum number of points used to compute the PH dimension")
     parser.add_argument("--seed", type=int, default=0, help="Random seed")
     parser.add_argument("--save_folder", type=str, default="./results", help="Where to save the results")
 
@@ -77,8 +78,8 @@ def main():
     logger.info(f"Random seed: {args.seed}")
     torch.manual_seed(args.seed)
 
-   # Prepare the data
-    train_loader, train_loader_eval, test_loader_eval = prepare_data(args.dataset, args.data_path, args.batch_size, args.batch_size_eval)
+    # Prepare the data
+    train_loader, train_loader_eval, test_loader_eval = prepare_data_classification(args.dataset, args.data_path, args.batch_size, args.batch_size_eval)
 
     # Build the model
     net = build_model(args.model, args.dataset).to(device)
@@ -87,10 +88,7 @@ def main():
     criterion = nn.CrossEntropyLoss(reduction="none").to(device)
 
     # Define optimizer
-    opt = torch.optim.SGD(
-        net.parameters(),
-        lr=args.lr,
-    )
+    opt = torch.optim.SGD(net.parameters(), lr=args.lr)
 
     # Lists to store the weights and losses for the persistent homology computation
     weights_list = []
@@ -102,7 +100,7 @@ def main():
     logger.info("Starting training")
 
     training_converged = False
-    for i, (x, y) in enumerate(cycle_loader(train_loader)):
+    for i, (x, y) in enumerate(loop_dataloader(train_loader)):
 
         x = x.to(device)
         y = y.to(device)
@@ -124,10 +122,10 @@ def main():
         if i % args.eval_freq == 0 and not training_converged:
 
             # Evaluation on full training set
-            train_set_loss, train_set_acc, _ = evaluate(net, criterion, train_loader_eval)
+            train_set_loss, train_set_acc, _ = evaluate_classifier(net, criterion, train_loader_eval)
 
             # Evaluation on full test set
-            test_set_loss, test_set_acc, _ = evaluate(net, criterion, test_loader_eval)
+            test_set_loss, test_set_acc, _ = evaluate_classifier(net, criterion, test_loader_eval)
 
             logger.info(f"Evaluation at iteration {i} - Train loss: {train_set_loss:.3f}, Train acc: {train_set_acc:.3f}, Test loss: {test_set_loss:.3f}, Test acc: {test_set_acc:.3f}")
 
@@ -142,24 +140,25 @@ def main():
             weights_list.append(get_weights(net))
 
             # Store losses for loss-based PH dim
-            train_set_loss, train_set_acc, train_losses_tensor = evaluate(net, criterion, train_loader_eval)
+            _, _, train_losses_tensor = evaluate_classifier(net, criterion, train_loader_eval)
             logger.info(f"Computed loss tensor at iteration {i}")
             losses_list.append(train_losses_tensor)
 
             if (len(weights_list) == args.max_ripser_points):
                 break
 
-    # Evaluation on full test set
-    test_set_loss, test_set_acc = evaluate(net, criterion, test_loader_eval)
+    # Evaluation on full train + test set
+    train_set_loss, train_set_acc, _ = evaluate_classifier(net, criterion, train_loader_eval)
+    test_set_loss, test_set_acc, _ = evaluate_classifier(net, criterion, test_loader_eval)
 
     # Compute gaps
     loss_gap = test_set_loss - train_set_loss
     acc_gap = test_set_acc - train_set_acc
 
     # Compute PH dimensions
-    weights_tensor = torch.tensor(weights_tensor, requires_grad=False)
+    weights_tensor = torch.cat(weights_list)
     weights_np = weights_tensor.cpu().numpy()
-    losses_np = torch.tensor(losses_list).cpu().numpy()
+    losses_np = torch.cat(losses_list).cpu().numpy()
 
     jump_size = int((args.max_ripser_points - args.min_ripser_points) / args.ripser_jump)
     logger.info("Computing euclidean PH dim...")
